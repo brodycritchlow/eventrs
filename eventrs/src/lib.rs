@@ -91,6 +91,12 @@ pub use filter::{
     BoxedFilter, SharedFilter
 };
 pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
+
+#[cfg(feature = "metrics")]
+pub use metrics::{
+    EventBusMetrics, EmissionResult, HandlerResult, EmissionStats, HandlerMetrics, 
+    SystemMetrics, MetricsReport, EmissionToken, MiddlewareExecutionMetric
+};
 pub use error::MiddlewareResult;
 
 /// Prelude module for convenient imports
@@ -104,6 +110,9 @@ pub mod prelude {
     
     pub use crate::{Filter, PredicateFilter, FilterChain, ChainMode};
     pub use crate::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareResult, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
+    
+    #[cfg(feature = "metrics")]
+    pub use crate::{EventBusMetrics, EmissionResult, HandlerResult, EmissionStats, HandlerMetrics};
 }
 
 /// Version information for the EventRS library.
@@ -114,6 +123,9 @@ mod test_builder;
 
 #[cfg(test)]
 mod test_middleware;
+
+#[cfg(test)]
+mod test_metrics;
 
 #[cfg(test)]
 mod tests {

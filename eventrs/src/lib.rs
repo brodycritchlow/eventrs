@@ -80,7 +80,10 @@ pub use handler::{Handler, HandlerId, FallibleHandler};
 pub use handler::{AsyncHandler, FallibleAsyncHandler};
 pub use event_bus::{EventBus, EventBusConfig, EventBusBuilder, ErrorHandling};
 pub use error::*;
-pub use metadata::{EventMetadata, SecurityLevel};
+pub use metadata::{
+    EventMetadata, SecurityLevel, EventTimestamps, EventSignature, EventSource, 
+    SourceType, EventProvenance, EventTransformation
+};
 pub use priority::{Priority, PriorityValue, PriorityOrdered, HandlerGroup, PriorityChain};
 
 #[cfg(feature = "async")]
@@ -107,7 +110,7 @@ pub use error::MiddlewareResult;
 /// Prelude module for convenient imports
 pub mod prelude {
     pub use crate::{Event, EventBus, EventBusBuilder, Handler, HandlerId};
-    pub use crate::{EventMetadata, Priority, PriorityValue, HandlerGroup, PriorityChain, ErrorHandling};
+    pub use crate::{EventMetadata, SecurityLevel, EventSource, SourceType, Priority, PriorityValue, HandlerGroup, PriorityChain, ErrorHandling};
     pub use crate::error::{EventBusError, HandlerError, EventValidationError};
     
     #[cfg(feature = "async")]

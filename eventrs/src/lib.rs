@@ -47,8 +47,8 @@
 #![warn(clippy::all)]
 #![allow(clippy::module_inception)]
 
-// Re-export derive macro
-pub use eventrs_derive::Event;
+// Re-export derive macros
+pub use eventrs_derive::{Event, AsyncEvent};
 
 // Core modules
 pub mod event;
@@ -65,6 +65,7 @@ pub mod async_event_bus;
 pub mod filter;
 pub mod middleware;
 pub mod thread_safe;
+pub mod testing;
 
 #[cfg(feature = "metrics")]
 pub mod metrics;
@@ -73,7 +74,7 @@ pub mod metrics;
 pub mod tracing;
 
 // Re-exports for convenience
-pub use event::Event;
+pub use event::{Event, AsyncEventMarker};
 pub use handler::{Handler, HandlerId, FallibleHandler};
 
 #[cfg(feature = "async")]
@@ -99,6 +100,7 @@ pub use filter::{
 };
 pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
 pub use thread_safe::{ThreadSafeEventBus, ThreadSafeEventBusConfig, EventSender, EventSenderError, MultiEventSender};
+pub use testing::{TestEventBus, TestEventBusConfig, MockHandler, EventSpy};
 
 #[cfg(feature = "metrics")]
 pub use metrics::{
@@ -109,7 +111,7 @@ pub use error::MiddlewareResult;
 
 /// Prelude module for convenient imports
 pub mod prelude {
-    pub use crate::{Event, EventBus, EventBusBuilder, Handler, HandlerId};
+    pub use crate::{Event, AsyncEvent, AsyncEventMarker, EventBus, EventBusBuilder, Handler, HandlerId};
     pub use crate::{EventMetadata, SecurityLevel, EventSource, SourceType, Priority, PriorityValue, HandlerGroup, PriorityChain, ErrorHandling};
     pub use crate::error::{EventBusError, HandlerError, EventValidationError};
     
@@ -119,6 +121,7 @@ pub mod prelude {
     pub use crate::{Filter, PredicateFilter, FilterChain, ChainMode};
     pub use crate::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareResult, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
     pub use crate::{ThreadSafeEventBus, ThreadSafeEventBusConfig};
+    pub use crate::{TestEventBus, TestEventBusConfig, MockHandler, EventSpy};
     
     #[cfg(feature = "metrics")]
     pub use crate::{EventBusMetrics, EmissionResult, HandlerResult, EmissionStats, HandlerMetrics};

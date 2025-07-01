@@ -44,6 +44,27 @@ pub trait AnyEventFilter: Send + Sync + 'static {
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }
+    
+    /// Returns whether this filter's results can be cached.
+    /// 
+    /// Filters that depend only on event type (not content) should return true.
+    /// Filters that examine event content should typically return false.
+    fn is_cacheable(&self) -> bool {
+        false
+    }
+    
+    /// Generates a cache key for the given event.
+    /// 
+    /// The cache key should uniquely identify the combination of this filter's
+    /// state and the relevant aspects of the event.
+    fn cache_key(&self, event: &dyn AnyEvent) -> String {
+        format!("{:?}", event.event_type_id())
+    }
+    
+    /// Returns a hint about whether this filter is expensive to evaluate.
+    fn is_expensive(&self) -> bool {
+        false
+    }
 }
 
 /// A type-erased, heap-allocated `AnyEventFilter`.
@@ -95,6 +116,10 @@ impl AnyEventFilter for AllowAllAnyFilter {
     fn name(&self) -> &'static str {
         "AllowAllAnyFilter"
     }
+    
+    fn is_cacheable(&self) -> bool {
+        true // Result is always the same
+    }
 }
 
 /// An always-reject filter for global use.
@@ -107,6 +132,10 @@ impl AnyEventFilter for RejectAllAnyFilter {
 
     fn name(&self) -> &'static str {
         "RejectAllAnyFilter"
+    }
+    
+    fn is_cacheable(&self) -> bool {
+        true // Result is always the same
     }
 }
 
@@ -192,5 +221,9 @@ impl AnyEventFilter for EventTypeFilter {
             EventTypeFilterMode::Allow => "AllowEventTypeFilter",
             EventTypeFilterMode::Block => "BlockEventTypeFilter",
         }
+    }
+    
+    fn is_cacheable(&self) -> bool {
+        true // Only depends on event type
     }
 }

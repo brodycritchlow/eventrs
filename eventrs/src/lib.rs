@@ -91,7 +91,8 @@ pub use filter::{
     AndFilter, OrFilter, NotFilter, FilterChain, ChainMode,
     BoxedFilter, SharedFilter, FilterManager, FilterManagerBuilder,
     AnyEvent, AnyEventFilter, BoxedAnyFilter, SharedAnyFilter, PredicateAnyFilter,
-    AllowAllAnyFilter, RejectAllAnyFilter, EventTypeFilter, EventTypeFilterMode
+    AllowAllAnyFilter, RejectAllAnyFilter, EventTypeFilter, EventTypeFilterMode,
+    CacheableEvent, DynamicFilter, ContentAwareCacheFilter, compute_hash
 };
 pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
 pub use thread_safe::{ThreadSafeEventBus, ThreadSafeEventBusConfig, EventSender, EventSenderError, MultiEventSender};
@@ -131,6 +132,9 @@ mod test_middleware;
 
 #[cfg(test)]
 mod test_global_filters;
+
+#[cfg(test)]
+mod test_dynamic_filters;
 
 #[cfg(all(test, feature = "metrics"))]
 mod test_metrics;

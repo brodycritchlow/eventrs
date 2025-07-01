@@ -11,12 +11,14 @@ use std::sync::Arc;
 
 pub mod any;
 pub mod manager;
+pub mod cacheable;
 
 pub use any::{
     AnyEvent, AnyEventFilter, BoxedAnyFilter, SharedAnyFilter, PredicateAnyFilter,
     AllowAllAnyFilter, RejectAllAnyFilter, EventTypeFilter, EventTypeFilterMode
 };
 pub use manager::{FilterManager, FilterManagerBuilder};
+pub use cacheable::{CacheableEvent, DynamicFilter, ContentAwareCacheFilter, compute_hash};
 
 /// Trait for event filters.
 /// 

@@ -4,7 +4,7 @@
 //! and evaluating event filters. It supports hierarchical filters,
 //! dynamic filter management, and performance optimizations like caching.
 
-use crate::filter::any::{AnyEvent, AnyEventFilter, BoxedAnyFilter};
+use crate::filter::any::{AnyEvent, BoxedAnyFilter};
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -224,10 +224,22 @@ impl FilterManager {
                 continue;
             }
 
-            // Evaluate filter (caching disabled for content-based filters)
-            // TODO: Implement smart caching that considers event content,
-            // or add a marker trait for cacheable filters
-            let result = entry.filter.evaluate(event);
+            // Check if filter supports caching
+            let result = if entry.filter.is_cacheable() {
+                // Use caching for cacheable filters
+                let cache_key = format!("{}-{}", entry.id, entry.filter.cache_key(event));
+                
+                if let Some(cached) = self.check_cache(&cache_key) {
+                    cached
+                } else {
+                    let result = entry.filter.evaluate(event);
+                    self.update_cache(cache_key, result, event.event_type_id());
+                    result
+                }
+            } else {
+                // No caching for non-cacheable filters
+                entry.filter.evaluate(event)
+            };
             
             if !result {
                 return false;

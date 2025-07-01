@@ -3,17 +3,30 @@
 //! This module provides the main EventBus struct that handles event emission
 //! and handler registration for synchronous event processing.
 
-use crate::event::{Event, EventWrapper};
+use crate::event::Event;
 use crate::handler::{Handler, HandlerId, BoxedHandler, SyncBoxedHandler, FallibleHandler, FallibleSyncBoxedHandler};
 use crate::error::{EventBusError, EventBusResult};
 use crate::priority::{Priority, PriorityOrdered};
-use crate::filter::{Filter, SharedFilter};
+use crate::filter::SharedFilter;
+// TODO: Re-enable when middleware system is complete
+// use crate::middleware::Middleware;
 
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::BinaryHeap;
+
+/// Error handling strategies for the EventBus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorHandling {
+    /// Stop processing on first error
+    StopOnFirstError,
+    /// Continue processing despite errors
+    ContinueOnError,
+    /// Retry failed handlers up to N times
+    RetryOnError(u32),
+}
 
 /// Configuration options for the EventBus.
 #[derive(Debug, Clone)]
@@ -23,6 +36,9 @@ pub struct EventBusConfig {
     
     /// Maximum total number of handlers across all event types.
     pub max_total_handlers: Option<usize>,
+    
+    /// Initial capacity for handler storage.
+    pub initial_capacity: usize,
     
     /// Whether to validate events before processing.
     pub validate_events: bool,
@@ -38,6 +54,12 @@ pub struct EventBusConfig {
     
     /// Whether to enable detailed error reporting.
     pub detailed_error_reporting: bool,
+    
+    /// Error handling strategy.
+    pub error_handling: ErrorHandling,
+    
+    /// Whether to enable metrics collection.
+    pub enable_metrics: bool,
 }
 
 impl Default for EventBusConfig {
@@ -45,11 +67,14 @@ impl Default for EventBusConfig {
         Self {
             max_handlers_per_event: Some(1000),
             max_total_handlers: Some(10000),
+            initial_capacity: 64,
             validate_events: true,
             use_priority_ordering: true,
             continue_on_handler_failure: true,
             default_handler_priority: Priority::Normal,
             detailed_error_reporting: false,
+            error_handling: ErrorHandling::ContinueOnError,
+            enable_metrics: false,
         }
     }
 }
@@ -169,6 +194,23 @@ impl EventBus {
     /// ```
     pub fn new() -> Self {
         Self::with_config(EventBusConfig::default())
+    }
+    
+    /// Creates a new EventBusBuilder for configuring the event bus.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{EventBus, Priority};
+    /// 
+    /// let bus = EventBus::builder()
+    ///     .with_capacity(1000)
+    ///     .with_metrics(true)
+    ///     .with_default_priority(Priority::High)
+    ///     .build();
+    /// ```
+    pub fn builder() -> EventBusBuilder {
+        EventBusBuilder::new()
     }
     
     /// Creates a new EventBus with the specified configuration.
@@ -763,6 +805,173 @@ impl EventBus {
         // In a real implementation, this would handle timeouts, retries, etc.
         handler_entry.handler.call(event);
         Ok(())
+    }
+}
+
+/// Builder for configuring EventBus instances.
+/// 
+/// The EventBusBuilder provides a fluent interface for configuring
+/// event buses with custom options, middleware, and filters.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use eventrs::{EventBus, Priority, ErrorHandling};
+/// 
+/// let bus = EventBus::builder()
+///     .with_capacity(1000)
+///     .with_metrics(true)
+///     .with_error_handling(ErrorHandling::StopOnFirstError)
+///     .with_default_priority(Priority::High)
+///     .build();
+/// ```
+pub struct EventBusBuilder {
+    config: EventBusConfig,
+    // TODO: Add middleware stack when trait object issues are resolved
+}
+
+impl EventBusBuilder {
+    /// Creates a new EventBusBuilder with default configuration.
+    pub fn new() -> Self {
+        Self {
+            config: EventBusConfig::default(),
+        }
+    }
+    
+    /// Sets the initial capacity for handler storage.
+    /// 
+    /// # Arguments
+    /// * `capacity` - Initial capacity for handler storage
+    /// 
+    /// # Examples
+    /// ```rust
+    /// let bus = EventBus::builder()
+    ///     .with_capacity(1000)
+    ///     .build();
+    /// ```
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.config.initial_capacity = capacity;
+        self
+    }
+    
+    /// Sets the maximum number of handlers per event type.
+    /// 
+    /// # Arguments
+    /// * `max_handlers` - Maximum handlers per event type, or None for unlimited
+    pub fn with_max_handlers_per_event(mut self, max_handlers: Option<usize>) -> Self {
+        self.config.max_handlers_per_event = max_handlers;
+        self
+    }
+    
+    /// Sets the maximum total number of handlers across all event types.
+    /// 
+    /// # Arguments
+    /// * `max_total` - Maximum total handlers, or None for unlimited
+    pub fn with_max_total_handlers(mut self, max_total: Option<usize>) -> Self {
+        self.config.max_total_handlers = max_total;
+        self
+    }
+    
+    /// Enables or disables event validation.
+    /// 
+    /// # Arguments
+    /// * `validate` - Whether to validate events before processing
+    pub fn with_validation(mut self, validate: bool) -> Self {
+        self.config.validate_events = validate;
+        self
+    }
+    
+    /// Enables or disables priority ordering.
+    /// 
+    /// # Arguments
+    /// * `use_priority` - Whether to process handlers in priority order
+    pub fn with_priority_ordering(mut self, use_priority: bool) -> Self {
+        self.config.use_priority_ordering = use_priority;
+        self
+    }
+    
+    /// Sets the default priority for handlers.
+    /// 
+    /// # Arguments
+    /// * `priority` - Default priority for new handlers
+    pub fn with_default_priority(mut self, priority: Priority) -> Self {
+        self.config.default_handler_priority = priority;
+        self
+    }
+    
+    /// Sets the error handling strategy.
+    /// 
+    /// # Arguments
+    /// * `strategy` - How to handle errors from handlers
+    pub fn with_error_handling(mut self, strategy: ErrorHandling) -> Self {
+        self.config.error_handling = strategy;
+        self
+    }
+    
+    /// Enables or disables detailed error reporting.
+    /// 
+    /// # Arguments
+    /// * `detailed` - Whether to enable detailed error reporting
+    pub fn with_detailed_errors(mut self, detailed: bool) -> Self {
+        self.config.detailed_error_reporting = detailed;
+        self
+    }
+    
+    /// Enables or disables metrics collection.
+    /// 
+    /// # Arguments
+    /// * `enabled` - Whether to enable metrics collection
+    pub fn with_metrics(mut self, enabled: bool) -> Self {
+        self.config.enable_metrics = enabled;
+        self
+    }
+    
+    /// Adds middleware to the event bus.
+    /// 
+    /// Middleware is executed in the order it was added.
+    /// 
+    /// # Arguments
+    /// * `middleware` - Middleware component to add
+    /// 
+    /// # Examples
+    /// ```rust,ignore
+    /// let bus = EventBus::builder()
+    ///     .with_middleware(LoggingMiddleware::new())
+    ///     .with_middleware(MetricsMiddleware::new())
+    ///     .build();
+    /// ```
+    pub fn with_middleware<M>(self, _middleware: M) -> Self
+    where
+        M: 'static,
+    {
+        // TODO: Implement middleware integration when trait object issues are resolved
+        self
+    }
+    
+    /// Adds a global filter that applies to all events.
+    /// 
+    /// # Arguments
+    /// * `filter` - Filter to apply globally
+    pub fn with_global_filter<F>(self, _filter: F) -> Self
+    where
+        F: 'static,
+    {
+        // TODO: Implement global filters when trait object issues are resolved
+        self
+    }
+    
+    /// Builds the configured EventBus.
+    /// 
+    /// # Returns
+    /// A new EventBus instance with the specified configuration.
+    pub fn build(self) -> EventBus {
+        EventBus::with_config(self.config)
+    }
+}
+
+impl Default for EventBusBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

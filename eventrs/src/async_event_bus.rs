@@ -229,6 +229,23 @@ impl AsyncEventBus {
         Self::with_config(AsyncEventBusConfig::default())
     }
     
+    /// Creates a new AsyncEventBusBuilder for configuring the async event bus.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{AsyncEventBus, Priority};
+    /// 
+    /// let bus = AsyncEventBus::builder()
+    ///     .with_max_concurrency(100)
+    ///     .with_metrics(true)
+    ///     .with_default_priority(Priority::High)
+    ///     .build();
+    /// ```
+    pub fn builder() -> AsyncEventBusBuilder {
+        AsyncEventBusBuilder::new()
+    }
+    
     /// Creates a new AsyncEventBus with the specified configuration.
     /// 
     /// # Arguments
@@ -692,6 +709,154 @@ impl AsyncEventBus {
         }
         
         Ok(())
+    }
+}
+
+/// Builder for configuring AsyncEventBus instances.
+/// 
+/// The AsyncEventBusBuilder provides a fluent interface for configuring
+/// async event buses with custom options, concurrency settings, and middleware.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use eventrs::{AsyncEventBus, Priority};
+/// 
+/// let bus = AsyncEventBus::builder()
+///     .with_max_concurrency(100)
+///     .with_metrics(true)
+///     .with_concurrent_threshold(3)
+///     .with_default_priority(Priority::High)
+///     .build();
+/// ```
+#[cfg(feature = "async")]
+pub struct AsyncEventBusBuilder {
+    config: AsyncEventBusConfig,
+    // TODO: Add middleware stack when async middleware is implemented
+}
+
+#[cfg(feature = "async")]
+impl AsyncEventBusBuilder {
+    /// Creates a new AsyncEventBusBuilder with default configuration.
+    pub fn new() -> Self {
+        Self {
+            config: AsyncEventBusConfig::default(),
+        }
+    }
+    
+    /// Sets the maximum number of handlers per event type.
+    /// 
+    /// # Arguments
+    /// * `max_handlers` - Maximum handlers per event type, or None for unlimited
+    pub fn with_max_handlers_per_event(mut self, max_handlers: Option<usize>) -> Self {
+        self.config.max_handlers_per_event = max_handlers;
+        self
+    }
+    
+    /// Sets the maximum total number of handlers across all event types.
+    /// 
+    /// # Arguments
+    /// * `max_total` - Maximum total handlers, or None for unlimited
+    pub fn with_max_total_handlers(mut self, max_total: Option<usize>) -> Self {
+        self.config.max_total_handlers = max_total;
+        self
+    }
+    
+    /// Enables or disables event validation.
+    /// 
+    /// # Arguments
+    /// * `validate` - Whether to validate events before processing
+    pub fn with_validation(mut self, validate: bool) -> Self {
+        self.config.validate_events = validate;
+        self
+    }
+    
+    /// Enables or disables priority ordering.
+    /// 
+    /// # Arguments
+    /// * `use_priority` - Whether to process handlers in priority order
+    pub fn with_priority_ordering(mut self, use_priority: bool) -> Self {
+        self.config.use_priority_ordering = use_priority;
+        self
+    }
+    
+    /// Sets whether to continue processing if a handler fails.
+    /// 
+    /// # Arguments
+    /// * `continue_on_failure` - Whether to continue processing despite handler failures
+    pub fn with_continue_on_failure(mut self, continue_on_failure: bool) -> Self {
+        self.config.continue_on_handler_failure = continue_on_failure;
+        self
+    }
+    
+    /// Sets the default priority for handlers.
+    /// 
+    /// # Arguments
+    /// * `priority` - Default priority for new handlers
+    pub fn with_default_priority(mut self, priority: Priority) -> Self {
+        self.config.default_handler_priority = priority;
+        self
+    }
+    
+    /// Enables or disables detailed error reporting.
+    /// 
+    /// # Arguments
+    /// * `detailed` - Whether to enable detailed error reporting
+    pub fn with_detailed_errors(mut self, detailed: bool) -> Self {
+        self.config.detailed_error_reporting = detailed;
+        self
+    }
+    
+    /// Sets the maximum number of concurrent handlers.
+    /// 
+    /// # Arguments
+    /// * `max_concurrent` - Maximum number of concurrent handlers, or None for unlimited
+    pub fn with_max_concurrency(mut self, max_concurrent: Option<usize>) -> Self {
+        self.config.max_concurrent_handlers = max_concurrent;
+        self
+    }
+    
+    /// Enables or disables concurrent execution of handlers.
+    /// 
+    /// # Arguments
+    /// * `concurrent` - Whether to execute handlers concurrently
+    pub fn with_concurrent_execution(mut self, concurrent: bool) -> Self {
+        self.config.concurrent_execution = concurrent;
+        self
+    }
+    
+    /// Sets the minimum number of handlers required to use concurrent execution.
+    /// 
+    /// # Arguments
+    /// * `threshold` - Minimum handlers needed for concurrent execution
+    pub fn with_concurrent_threshold(mut self, threshold: usize) -> Self {
+        self.config.concurrent_threshold = threshold;
+        self
+    }
+    
+    /// Enables or disables metrics collection.
+    /// 
+    /// # Arguments
+    /// * `enabled` - Whether to enable metrics collection
+    pub fn with_metrics(mut self, enabled: bool) -> Self {
+        // TODO: Add metrics flag to AsyncEventBusConfig
+        // For now, this is a no-op
+        self
+    }
+    
+    /// Builds the configured AsyncEventBus.
+    /// 
+    /// # Returns
+    /// A new AsyncEventBus instance with the specified configuration.
+    pub fn build(self) -> AsyncEventBus {
+        AsyncEventBus::with_config(self.config)
+    }
+}
+
+#[cfg(feature = "async")]
+impl Default for AsyncEventBusBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

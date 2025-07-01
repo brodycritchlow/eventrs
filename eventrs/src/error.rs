@@ -204,6 +204,10 @@ pub enum MiddlewareError {
     #[error("Middleware chain interrupted")]
     ChainInterrupted,
     
+    /// The middleware chain was short-circuited.
+    #[error("Middleware chain short-circuited")]
+    ChainShortCircuited,
+    
     /// A middleware component failed to process the event.
     #[error("Middleware processing failed: {middleware}")]
     ProcessingFailed {
@@ -224,6 +228,14 @@ pub enum MiddlewareError {
         /// The custom error message.
         message: String,
     },
+}
+
+impl From<EventValidationError> for MiddlewareError {
+    fn from(err: EventValidationError) -> Self {
+        MiddlewareError::Custom {
+            message: err.to_string(),
+        }
+    }
 }
 
 /// Errors that can occur during filter evaluation.

@@ -77,37 +77,43 @@ pub use handler::{Handler, HandlerId, FallibleHandler};
 
 #[cfg(feature = "async")]
 pub use handler::{AsyncHandler, FallibleAsyncHandler};
-pub use event_bus::{EventBus, EventBusConfig};
+pub use event_bus::{EventBus, EventBusConfig, EventBusBuilder, ErrorHandling};
 pub use error::*;
 pub use metadata::{EventMetadata, SecurityLevel};
 pub use priority::{Priority, PriorityValue, PriorityOrdered};
 
 #[cfg(feature = "async")]
-pub use async_event_bus::{AsyncEventBus, AsyncEventBusConfig};
+pub use async_event_bus::{AsyncEventBus, AsyncEventBusConfig, AsyncEventBusBuilder};
 
 pub use filter::{
     Filter, PredicateFilter, AllowAllFilter, RejectAllFilter,
     AndFilter, OrFilter, NotFilter, FilterChain, ChainMode,
     BoxedFilter, SharedFilter
 };
-pub use middleware::{Middleware, MiddlewareContext};
+pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
 pub use error::MiddlewareResult;
 
 /// Prelude module for convenient imports
 pub mod prelude {
-    pub use crate::{Event, EventBus, Handler, HandlerId};
-    pub use crate::{EventMetadata, Priority};
+    pub use crate::{Event, EventBus, EventBusBuilder, Handler, HandlerId};
+    pub use crate::{EventMetadata, Priority, ErrorHandling};
     pub use crate::error::{EventBusError, HandlerError, EventValidationError};
     
     #[cfg(feature = "async")]
-    pub use crate::{AsyncEventBus, AsyncEventBusConfig};
+    pub use crate::{AsyncEventBus, AsyncEventBusConfig, AsyncEventBusBuilder};
     
     pub use crate::{Filter, PredicateFilter, FilterChain, ChainMode};
-    pub use crate::{Middleware, MiddlewareContext, MiddlewareResult};
+    pub use crate::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareResult, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
 }
 
-// Version information
+/// Version information for the EventRS library.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod test_builder;
+
+#[cfg(test)]
+mod test_middleware;
 
 #[cfg(test)]
 mod tests {

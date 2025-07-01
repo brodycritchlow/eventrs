@@ -89,7 +89,9 @@ pub use async_event_bus::{AsyncEventBus, AsyncEventBusConfig, AsyncEventBusBuild
 pub use filter::{
     Filter, PredicateFilter, AllowAllFilter, RejectAllFilter,
     AndFilter, OrFilter, NotFilter, FilterChain, ChainMode,
-    BoxedFilter, SharedFilter
+    BoxedFilter, SharedFilter, FilterManager, FilterManagerBuilder,
+    AnyEvent, AnyEventFilter, BoxedAnyFilter, SharedAnyFilter, PredicateAnyFilter,
+    AllowAllAnyFilter, RejectAllAnyFilter, EventTypeFilter, EventTypeFilterMode
 };
 pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
 pub use thread_safe::{ThreadSafeEventBus, ThreadSafeEventBusConfig, EventSender, EventSenderError, MultiEventSender};
@@ -126,6 +128,9 @@ mod test_builder;
 
 #[cfg(test)]
 mod test_middleware;
+
+#[cfg(test)]
+mod test_global_filters;
 
 #[cfg(all(test, feature = "metrics"))]
 mod test_metrics;

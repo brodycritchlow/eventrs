@@ -7,7 +7,7 @@ use crate::event::Event;
 use crate::handler::{Handler, HandlerId, BoxedHandler, SyncBoxedHandler, FallibleHandler, FallibleSyncBoxedHandler};
 use crate::error::{EventBusError, EventBusResult};
 use crate::priority::{Priority, PriorityOrdered};
-use crate::filter::SharedFilter;
+use crate::filter::{SharedFilter, FilterManager, BoxedAnyFilter};
 // TODO: Re-enable when middleware system is complete
 // use crate::middleware::Middleware;
 
@@ -180,6 +180,9 @@ pub struct EventBus {
     
     /// Counter for total number of registered handlers.
     handler_count: Arc<Mutex<usize>>,
+    
+    /// Global filter manager for bus-level filtering.
+    global_filter_manager: Arc<FilterManager>,
 }
 
 impl EventBus {
@@ -239,6 +242,7 @@ impl EventBus {
             handler_registry: Arc::new(RwLock::new(HashMap::new())),
             shutting_down: Arc::new(AtomicBool::new(false)),
             handler_count: Arc::new(Mutex::new(0)),
+            global_filter_manager: Arc::new(FilterManager::new()),
         }
     }
     
@@ -273,6 +277,11 @@ impl EventBus {
         // Validate the event if configured to do so
         if self.config.validate_events {
             event.validate()?;
+        }
+        
+        // Check global filters first
+        if !self.global_filter_manager.evaluate(&event) {
+            return Ok(()); // Event filtered out by global filters
         }
         
         // Get handlers for this event type
@@ -805,6 +814,149 @@ impl EventBus {
         // In a real implementation, this would handle timeouts, retries, etc.
         handler_entry.handler.call(event);
         Ok(())
+    }
+    
+    /// Adds a global filter that applies to all events.
+    /// 
+    /// Global filters are evaluated before any handler-specific filters and can
+    /// prevent events from being processed entirely.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `id` - Unique identifier for the filter
+    /// * `filter` - The filter to add
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{EventBus, PredicateAnyFilter};
+    /// 
+    /// let bus = EventBus::new();
+    /// 
+    /// // Add a filter that only allows events during business hours
+    /// let business_hours_filter = PredicateAnyFilter::new(
+    ///     "business_hours",
+    ///     |_event| {
+    ///         let hour = chrono::Local::now().hour();
+    ///         hour >= 9 && hour < 17
+    ///     }
+    /// );
+    /// 
+    /// bus.add_global_filter("business_hours", Box::new(business_hours_filter));
+    /// ```
+    pub fn add_global_filter<S: Into<String>>(&self, id: S, filter: BoxedAnyFilter) {
+        self.global_filter_manager.add_filter(id, filter);
+    }
+    
+    /// Adds a global filter with priority.
+    /// 
+    /// Higher priority filters are evaluated first.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `id` - Unique identifier for the filter
+    /// * `filter` - The filter to add
+    /// * `priority` - Priority of the filter (higher values = higher priority)
+    pub fn add_global_filter_with_priority<S: Into<String>>(&self, id: S, filter: BoxedAnyFilter, priority: i32) {
+        self.global_filter_manager.add_filter_with_priority(id, filter, priority);
+    }
+    
+    /// Removes a global filter by its ID.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `id` - The ID of the filter to remove
+    /// 
+    /// # Returns
+    /// 
+    /// `true` if the filter was found and removed, `false` otherwise
+    pub fn remove_global_filter(&self, id: &str) -> bool {
+        self.global_filter_manager.remove_filter(id)
+    }
+    
+    /// Enables or disables a global filter.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `id` - The ID of the filter to modify
+    /// * `enabled` - Whether the filter should be enabled
+    /// 
+    /// # Returns
+    /// 
+    /// `true` if the filter was found and modified, `false` otherwise
+    pub fn set_global_filter_enabled(&self, id: &str, enabled: bool) -> bool {
+        self.global_filter_manager.set_filter_enabled(id, enabled)
+    }
+    
+    /// Returns whether a global filter is enabled.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `id` - The ID of the filter to check
+    /// 
+    /// # Returns
+    /// 
+    /// `true` if the filter exists and is enabled, `false` otherwise
+    pub fn is_global_filter_enabled(&self, id: &str) -> bool {
+        self.global_filter_manager.is_filter_enabled(id)
+    }
+    
+    /// Lists all global filter IDs.
+    /// 
+    /// # Returns
+    /// 
+    /// A vector of all global filter IDs
+    pub fn list_global_filters(&self) -> Vec<String> {
+        self.global_filter_manager.list_filters()
+    }
+    
+    /// Enables or disables all global filtering.
+    /// 
+    /// When disabled, all events pass through regardless of global filter settings.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `enabled` - Whether global filtering should be enabled
+    pub fn set_global_filtering_enabled(&self, enabled: bool) {
+        self.global_filter_manager.set_enabled(enabled);
+    }
+    
+    /// Returns whether global filtering is enabled.
+    /// 
+    /// # Returns
+    /// 
+    /// `true` if global filtering is enabled, `false` otherwise
+    pub fn is_global_filtering_enabled(&self) -> bool {
+        self.global_filter_manager.is_enabled()
+    }
+    
+    /// Clears the global filter cache.
+    /// 
+    /// This forces all subsequent filter evaluations to be computed fresh,
+    /// which may be useful after modifying filter configurations or when
+    /// event patterns change significantly.
+    pub fn clear_global_filter_cache(&self) {
+        self.global_filter_manager.clear_cache();
+    }
+    
+    /// Returns the number of global filters.
+    /// 
+    /// # Returns
+    /// 
+    /// The total number of global filters registered
+    pub fn global_filter_count(&self) -> usize {
+        self.global_filter_manager.filter_count()
+    }
+    
+    /// Returns a reference to the global filter manager.
+    /// 
+    /// This provides access to advanced filter management operations.
+    /// 
+    /// # Returns
+    /// 
+    /// A reference to the FilterManager
+    pub fn global_filter_manager(&self) -> &FilterManager {
+        &self.global_filter_manager
     }
 }
 

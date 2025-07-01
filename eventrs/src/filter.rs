@@ -9,6 +9,15 @@ use crate::event::Event;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+pub mod any;
+pub mod manager;
+
+pub use any::{
+    AnyEvent, AnyEventFilter, BoxedAnyFilter, SharedAnyFilter, PredicateAnyFilter,
+    AllowAllAnyFilter, RejectAllAnyFilter, EventTypeFilter, EventTypeFilterMode
+};
+pub use manager::{FilterManager, FilterManagerBuilder};
+
 /// Trait for event filters.
 /// 
 /// Filters determine whether an event should be processed by handlers.

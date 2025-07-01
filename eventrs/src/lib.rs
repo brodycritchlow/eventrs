@@ -92,7 +92,7 @@ pub use filter::{
     BoxedFilter, SharedFilter
 };
 pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
-pub use thread_safe::{ThreadSafeEventBus, ThreadSafeEventBusConfig};
+pub use thread_safe::{ThreadSafeEventBus, ThreadSafeEventBusConfig, EventSender, EventSenderError, MultiEventSender};
 
 #[cfg(feature = "metrics")]
 pub use metrics::{

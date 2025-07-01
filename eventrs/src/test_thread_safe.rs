@@ -371,4 +371,113 @@ mod tests {
         // This test demonstrates the intended behavior
         assert!(result2.is_ok()); // Current behavior - would be Err in full implementation
     }
+
+    #[test]
+    fn test_event_sender() {
+        let bus = Arc::new(ThreadSafeEventBus::new());
+        let received_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&received_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create EventSender
+        let sender = bus.create_sender::<TestEvent>(100).unwrap();
+        
+        // Send events
+        sender.send(TestEvent {
+            value: 1,
+            message: "first".to_string(),
+        }).unwrap();
+        
+        sender.send(TestEvent {
+            value: 2,
+            message: "second".to_string(),
+        }).unwrap();
+        
+        // Give time for events to be processed
+        thread::sleep(Duration::from_millis(50));
+        
+        // Check that events were processed
+        let events = received_events.lock().unwrap();
+        assert!(events.contains(&1));
+        assert!(events.contains(&2));
+    }
+
+    #[test]
+    fn test_event_sender_try_send() {
+        let bus = Arc::new(ThreadSafeEventBus::new());
+        let received_count = Arc::new(Mutex::new(0));
+        
+        // Register handler
+        let count_clone = Arc::clone(&received_count);
+        bus.on(move |_event: TestEvent| {
+            let mut count = count_clone.lock().unwrap();
+            *count += 1;
+        });
+        
+        // Create EventSender
+        let sender = bus.create_sender::<TestEvent>(100).unwrap();
+        
+        // Try sending events
+        let result1 = sender.try_send(TestEvent {
+            value: 1,
+            message: "first".to_string(),
+        });
+        assert!(result1.is_ok());
+        
+        let result2 = sender.try_send(TestEvent {
+            value: 2,
+            message: "second".to_string(),
+        });
+        assert!(result2.is_ok());
+        
+        // Give time for events to be processed
+        thread::sleep(Duration::from_millis(50));
+        
+        // Check that events were processed
+        let count = *received_count.lock().unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_multi_event_sender() {
+        let bus = Arc::new(ThreadSafeEventBus::new());
+        let test_events = Arc::new(Mutex::new(Vec::new()));
+        let counter_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handlers
+        let test_clone = Arc::clone(&test_events);
+        bus.on(move |event: TestEvent| {
+            test_clone.lock().unwrap().push(event.value);
+        });
+        
+        let counter_clone = Arc::clone(&counter_events);
+        bus.on(move |event: CounterEvent| {
+            counter_clone.lock().unwrap().push(event.id);
+        });
+        
+        // Create MultiEventSender
+        let multi_sender = crate::thread_safe::MultiEventSender::new(Arc::clone(&bus), 100);
+        
+        // Send events of different types
+        multi_sender.send(TestEvent {
+            value: 10,
+            message: "test".to_string(),
+        }).unwrap();
+        
+        multi_sender.send(CounterEvent { id: 20 }).unwrap();
+        
+        // Give time for events to be processed
+        thread::sleep(Duration::from_millis(50));
+        
+        // Check that both event types were processed
+        let test_vals = test_events.lock().unwrap();
+        let counter_vals = counter_events.lock().unwrap();
+        
+        assert!(test_vals.contains(&10));
+        assert!(counter_vals.contains(&20));
+    }
 }

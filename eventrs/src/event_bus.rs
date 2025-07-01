@@ -7,6 +7,7 @@ use crate::event::{Event, EventWrapper};
 use crate::handler::{Handler, HandlerId, BoxedHandler, SyncBoxedHandler, FallibleHandler, FallibleSyncBoxedHandler};
 use crate::error::{EventBusError, EventBusResult};
 use crate::priority::{Priority, PriorityOrdered};
+use crate::filter::{Filter, SharedFilter};
 
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -59,6 +60,7 @@ struct HandlerEntry<E: Event> {
     id: HandlerId,
     handler: Arc<dyn BoxedHandler<E>>,
     priority: Priority,
+    filter: Option<SharedFilter<E>>,
 }
 
 impl<E: Event> HandlerEntry<E> {
@@ -66,7 +68,25 @@ impl<E: Event> HandlerEntry<E> {
         Self { 
             id, 
             handler: Arc::from(handler), 
-            priority 
+            priority,
+            filter: None,
+        }
+    }
+    
+    fn new_with_filter(id: HandlerId, handler: Box<dyn BoxedHandler<E>>, priority: Priority, filter: SharedFilter<E>) -> Self {
+        Self { 
+            id, 
+            handler: Arc::from(handler), 
+            priority,
+            filter: Some(filter),
+        }
+    }
+    
+    /// Checks if this handler should process the given event based on its filter.
+    fn should_handle(&self, event: &E) -> bool {
+        match &self.filter {
+            Some(filter) => filter.evaluate(event),
+            None => true, // No filter means always handle
         }
     }
 }
@@ -315,6 +335,76 @@ impl EventBus {
         self.register_fallible_handler(handler, self.config.default_handler_priority)
     }
     
+    /// Registers a handler with a filter for events of type `E`.
+    /// 
+    /// The handler will only be called if the filter evaluates to `true` for the event.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `handler` - The handler to register
+    /// * `filter` - The filter to apply to events
+    /// 
+    /// # Returns
+    /// 
+    /// Returns a `HandlerId` that can be used to unregister the handler.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{EventBus, Event, PredicateFilter};
+    /// 
+    /// #[derive(Event, Clone)]
+    /// struct TestEvent { value: i32 }
+    /// 
+    /// let mut bus = EventBus::new();
+    /// let filter = PredicateFilter::new("high_value", |event: &TestEvent| {
+    ///     event.value > 100
+    /// });
+    /// 
+    /// let handler_id = bus.on_filtered(
+    ///     |event: TestEvent| println!("High value: {}", event.value),
+    ///     Arc::new(filter)
+    /// );
+    /// ```
+    pub fn on_filtered<E: Event, H: Handler<E>>(&mut self, handler: H, filter: SharedFilter<E>) -> HandlerId {
+        self.register_handler_with_filter(handler, self.config.default_handler_priority, filter)
+    }
+    
+    /// Registers a handler with a filter and priority for events of type `E`.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `handler` - The handler to register
+    /// * `filter` - The filter to apply to events
+    /// * `priority` - The priority for this handler
+    /// 
+    /// # Returns
+    /// 
+    /// Returns a `HandlerId` that can be used to unregister the handler.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{EventBus, Event, PredicateFilter, Priority};
+    /// 
+    /// #[derive(Event, Clone)]
+    /// struct TestEvent { value: i32 }
+    /// 
+    /// let mut bus = EventBus::new();
+    /// let filter = PredicateFilter::new("high_value", |event: &TestEvent| {
+    ///     event.value > 100
+    /// });
+    /// 
+    /// let handler_id = bus.on_filtered_with_priority(
+    ///     |event: TestEvent| println!("High priority, high value: {}", event.value),
+    ///     Arc::new(filter),
+    ///     Priority::High
+    /// );
+    /// ```
+    pub fn on_filtered_with_priority<E: Event, H: Handler<E>>(&mut self, handler: H, filter: SharedFilter<E>, priority: Priority) -> HandlerId {
+        self.register_handler_with_filter(handler, priority, filter)
+    }
+    
     /// Unregisters a previously registered handler.
     /// 
     /// # Arguments
@@ -523,6 +613,50 @@ impl EventBus {
         handler_id
     }
     
+    fn register_handler_with_filter<E: Event, H: Handler<E>>(&mut self, handler: H, priority: Priority, filter: SharedFilter<E>) -> HandlerId {
+        let handler_id = HandlerId::new();
+        let type_id = TypeId::of::<E>();
+        
+        // Check limits
+        if let Some(max_total) = self.config.max_total_handlers {
+            if self.total_handler_count() >= max_total {
+                // In a real implementation, this would return a Result
+                panic!("Maximum total handlers exceeded");
+            }
+        }
+        
+        // Create boxed handler
+        let boxed = Box::new(SyncBoxedHandler::new(handler));
+        let entry = HandlerEntry::new_with_filter(handler_id, boxed, priority, filter);
+        
+        // Store handler
+        {
+            let mut handlers_map = self.handlers.write().unwrap();
+            let handlers_vec = handlers_map.entry(type_id).or_insert_with(|| {
+                Box::new(Vec::<HandlerEntry<E>>::new()) as Box<dyn std::any::Any + Send + Sync>
+            });
+            
+            // Downcast to the concrete type and add the handler
+            if let Some(vec) = handlers_vec.downcast_mut::<Vec<HandlerEntry<E>>>() {
+                vec.push(entry);
+            }
+        }
+        
+        // Register handler ID
+        {
+            let mut registry = self.handler_registry.write().unwrap();
+            registry.insert(handler_id, type_id);
+        }
+        
+        // Increment counter
+        {
+            let mut count = self.handler_count.lock().unwrap();
+            *count += 1;
+        }
+        
+        handler_id
+    }
+    
     fn register_fallible_handler<E: Event, H: FallibleHandler<E>>(&mut self, handler: H, priority: Priority) -> HandlerId {
         let handler_id = HandlerId::new();
         let type_id = TypeId::of::<E>();
@@ -585,6 +719,11 @@ impl EventBus {
         while let Some(ordered_handler) = priority_handlers.pop() {
             let handler_entry = ordered_handler.item();
             
+            // Check if the handler should process this event based on its filter
+            if !handler_entry.should_handle(event) {
+                continue; // Skip this handler if filter doesn't match
+            }
+            
             if let Err(error) = self.execute_handler(handler_entry, event.clone()) {
                 if !self.config.continue_on_handler_failure {
                     return Err(error);
@@ -601,6 +740,11 @@ impl EventBus {
     
     fn process_handlers_sequential<E: Event>(&self, event: &E, handlers: Vec<HandlerEntry<E>>) -> EventBusResult<()> {
         for handler_entry in handlers {
+            // Check if the handler should process this event based on its filter
+            if !handler_entry.should_handle(event) {
+                continue; // Skip this handler if filter doesn't match
+            }
+            
             if let Err(error) = self.execute_handler(&handler_entry, event.clone()) {
                 if !self.config.continue_on_handler_failure {
                     return Err(error);

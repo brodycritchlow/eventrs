@@ -83,9 +83,13 @@ pub use metadata::{EventMetadata, SecurityLevel};
 pub use priority::{Priority, PriorityValue, PriorityOrdered};
 
 #[cfg(feature = "async")]
-pub use async_event_bus::AsyncEventBus;
+pub use async_event_bus::{AsyncEventBus, AsyncEventBusConfig};
 
-pub use filter::Filter;
+pub use filter::{
+    Filter, PredicateFilter, AllowAllFilter, RejectAllFilter,
+    AndFilter, OrFilter, NotFilter, FilterChain, ChainMode,
+    BoxedFilter, SharedFilter
+};
 pub use middleware::{Middleware, MiddlewareContext};
 pub use error::MiddlewareResult;
 
@@ -96,9 +100,10 @@ pub mod prelude {
     pub use crate::error::{EventBusError, HandlerError, EventValidationError};
     
     #[cfg(feature = "async")]
-    pub use crate::AsyncEventBus;
+    pub use crate::{AsyncEventBus, AsyncEventBusConfig};
     
-    pub use crate::{Filter, Middleware, MiddlewareContext, MiddlewareResult};
+    pub use crate::{Filter, PredicateFilter, FilterChain, ChainMode};
+    pub use crate::{Middleware, MiddlewareContext, MiddlewareResult};
 }
 
 // Version information

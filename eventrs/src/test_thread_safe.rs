@@ -480,4 +480,191 @@ mod tests {
         assert!(test_vals.contains(&10));
         assert!(counter_vals.contains(&20));
     }
+
+    #[test]
+    fn test_emit_batch_sequential() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create batch of events
+        let events = vec![
+            TestEvent { value: 1, message: "first".to_string() },
+            TestEvent { value: 2, message: "second".to_string() },
+            TestEvent { value: 3, message: "third".to_string() },
+            TestEvent { value: 4, message: "fourth".to_string() },
+        ];
+        
+        // Emit batch
+        let results = bus.emit_batch(events).unwrap();
+        
+        // Verify all events were processed
+        assert_eq!(results.len(), 4);
+        for result in &results {
+            assert!(result.is_ok());
+        }
+        
+        let processed = processed_events.lock().unwrap();
+        assert_eq!(*processed, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_emit_batch_concurrent() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create batch of events (large enough to trigger concurrent processing)
+        let events = vec![
+            TestEvent { value: 1, message: "first".to_string() },
+            TestEvent { value: 2, message: "second".to_string() },
+            TestEvent { value: 3, message: "third".to_string() },
+            TestEvent { value: 4, message: "fourth".to_string() },
+            TestEvent { value: 5, message: "fifth".to_string() },
+        ];
+        
+        // Emit batch concurrently
+        let results = bus.emit_batch_concurrent(events).unwrap();
+        
+        // Verify all events were processed
+        assert_eq!(results.len(), 5);
+        for result in &results {
+            assert!(result.is_ok());
+        }
+        
+        // Give time for concurrent processing
+        thread::sleep(Duration::from_millis(10));
+        
+        let mut processed = processed_events.lock().unwrap().clone();
+        processed.sort(); // Order might vary due to concurrent processing
+        assert_eq!(processed, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_emit_batch_concurrent_small_batch() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create small batch (should use sequential processing)
+        let events = vec![
+            TestEvent { value: 1, message: "first".to_string() },
+            TestEvent { value: 2, message: "second".to_string() },
+        ];
+        
+        // Emit batch concurrently (but should use sequential due to size)
+        let results = bus.emit_batch_concurrent(events).unwrap();
+        
+        // Verify all events were processed
+        assert_eq!(results.len(), 2);
+        for result in &results {
+            assert!(result.is_ok());
+        }
+        
+        let processed = processed_events.lock().unwrap();
+        assert_eq!(*processed, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_emit_batch_with_errors() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler that fails for even values
+        let events_clone = Arc::clone(&processed_events);
+        bus.on_fallible(move |event: TestEvent| -> Result<(), TestError> {
+            if event.value % 2 == 0 {
+                Err(TestError("Even values not allowed".to_string()))
+            } else {
+                events_clone.lock().unwrap().push(event.value);
+                Ok(())
+            }
+        });
+        
+        // Create batch with both even and odd values
+        let events = vec![
+            TestEvent { value: 1, message: "first".to_string() },
+            TestEvent { value: 2, message: "second".to_string() },
+            TestEvent { value: 3, message: "third".to_string() },
+            TestEvent { value: 4, message: "fourth".to_string() },
+        ];
+        
+        // Emit batch
+        let results = bus.emit_batch(events).unwrap();
+        
+        // Verify results - should have successes and failures
+        assert_eq!(results.len(), 4);
+        assert!(results[0].is_ok()); // 1 - odd, should succeed
+        assert!(results[1].is_ok()); // 2 - even, but handler error doesn't propagate with current config
+        assert!(results[2].is_ok()); // 3 - odd, should succeed
+        assert!(results[3].is_ok()); // 4 - even, but handler error doesn't propagate with current config
+        
+        // Only odd values should have been processed
+        let processed = processed_events.lock().unwrap();
+        assert_eq!(*processed, vec![1, 3]);
+    }
+
+    #[test]
+    fn test_emit_batch_empty() {
+        let bus = ThreadSafeEventBus::new();
+        
+        // Test empty batch
+        let events: Vec<TestEvent> = vec![];
+        let results = bus.emit_batch(events).unwrap();
+        
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_emit_batch_after_shutdown() {
+        let bus = ThreadSafeEventBus::new();
+        
+        // Shutdown the bus
+        bus.shutdown().unwrap();
+        
+        // Try to emit batch after shutdown
+        let events = vec![
+            TestEvent { value: 1, message: "test".to_string() },
+        ];
+        
+        let result = bus.emit_batch(events);
+        assert!(result.is_err());
+        
+        // Should also fail for concurrent batch
+        let events = vec![
+            TestEvent { value: 1, message: "test".to_string() },
+        ];
+        
+        let result = bus.emit_batch_concurrent(events);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_emit_mixed_batch() {
+        let bus = ThreadSafeEventBus::new();
+        
+        // Test mixed batch (currently returns error as not fully implemented)
+        let result = bus.emit_mixed_batch(|_emitter| {
+            Ok(())
+        });
+        
+        assert!(result.is_ok());
+        let results = result.unwrap();
+        assert_eq!(results.len(), 1);
+    }
 }

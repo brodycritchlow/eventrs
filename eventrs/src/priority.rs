@@ -342,6 +342,328 @@ impl<T> Ord for PriorityOrdered<T> {
     }
 }
 
+/// A group of handlers with the same priority that can be executed together.
+/// 
+/// HandlerGroup allows organizing multiple handlers under a single priority level,
+/// providing better organization and batch execution capabilities.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use eventrs::{Priority, HandlerGroup};
+/// 
+/// let mut group = HandlerGroup::new(Priority::High);
+/// group.add_handler("auth_handler".to_string());
+/// group.add_handler("validation_handler".to_string());
+/// 
+/// assert_eq!(group.handler_count(), 2);
+/// assert_eq!(group.priority(), Priority::High);
+/// ```
+#[derive(Debug, Clone)]
+pub struct HandlerGroup {
+    priority: Priority,
+    handler_ids: Vec<String>,
+    name: Option<String>,
+    enabled: bool,
+}
+
+impl HandlerGroup {
+    /// Creates a new handler group with the specified priority.
+    pub fn new(priority: Priority) -> Self {
+        Self {
+            priority,
+            handler_ids: Vec::new(),
+            name: None,
+            enabled: true,
+        }
+    }
+    
+    /// Creates a new named handler group.
+    pub fn with_name<S: Into<String>>(priority: Priority, name: S) -> Self {
+        Self {
+            priority,
+            handler_ids: Vec::new(),
+            name: Some(name.into()),
+            enabled: true,
+        }
+    }
+    
+    /// Returns the priority of this handler group.
+    pub fn priority(&self) -> Priority {
+        self.priority
+    }
+    
+    /// Sets the priority of this handler group.
+    pub fn set_priority(&mut self, priority: Priority) {
+        self.priority = priority;
+    }
+    
+    /// Returns the name of this handler group, if any.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+    
+    /// Sets the name of this handler group.
+    pub fn set_name<S: Into<String>>(&mut self, name: S) {
+        self.name = Some(name.into());
+    }
+    
+    /// Returns whether this handler group is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+    
+    /// Enables this handler group.
+    pub fn enable(&mut self) {
+        self.enabled = true;
+    }
+    
+    /// Disables this handler group.
+    pub fn disable(&mut self) {
+        self.enabled = false;
+    }
+    
+    /// Adds a handler to this group.
+    pub fn add_handler<S: Into<String>>(&mut self, handler_id: S) {
+        self.handler_ids.push(handler_id.into());
+    }
+    
+    /// Removes a handler from this group.
+    pub fn remove_handler(&mut self, handler_id: &str) -> bool {
+        if let Some(pos) = self.handler_ids.iter().position(|id| id == handler_id) {
+            self.handler_ids.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+    
+    /// Returns whether this group contains the specified handler.
+    pub fn contains_handler(&self, handler_id: &str) -> bool {
+        self.handler_ids.iter().any(|id| id == handler_id)
+    }
+    
+    /// Returns the number of handlers in this group.
+    pub fn handler_count(&self) -> usize {
+        self.handler_ids.len()
+    }
+    
+    /// Returns a slice of all handler IDs in this group.
+    pub fn handler_ids(&self) -> &[String] {
+        &self.handler_ids
+    }
+    
+    /// Returns whether this group is empty.
+    pub fn is_empty(&self) -> bool {
+        self.handler_ids.is_empty()
+    }
+    
+    /// Clears all handlers from this group.
+    pub fn clear(&mut self) {
+        self.handler_ids.clear();
+    }
+}
+
+impl PartialEq for HandlerGroup {
+    fn eq(&self, other: &Self) -> bool {
+        self.priority == other.priority
+    }
+}
+
+impl Eq for HandlerGroup {}
+
+impl PartialOrd for HandlerGroup {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for HandlerGroup {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.priority.cmp(&other.priority)
+    }
+}
+
+/// A chain of handler groups ordered by priority.
+/// 
+/// PriorityChain provides a way to organize multiple HandlerGroups in priority order,
+/// allowing for complex execution patterns and group-based handler management.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use eventrs::{Priority, HandlerGroup, PriorityChain};
+/// 
+/// let mut chain = PriorityChain::new();
+/// 
+/// let mut auth_group = HandlerGroup::with_name(Priority::Critical, "authentication");
+/// auth_group.add_handler("auth_handler".to_string());
+/// 
+/// let mut business_group = HandlerGroup::with_name(Priority::Normal, "business_logic");
+/// business_group.add_handler("validation_handler".to_string());
+/// business_group.add_handler("processing_handler".to_string());
+/// 
+/// chain.add_group(auth_group);
+/// chain.add_group(business_group);
+/// 
+/// assert_eq!(chain.group_count(), 2);
+/// // Authentication group will be first due to Critical priority
+/// assert_eq!(chain.groups()[0].name(), Some("authentication"));
+/// ```
+#[derive(Debug, Clone)]
+pub struct PriorityChain {
+    groups: Vec<HandlerGroup>,
+    name: Option<String>,
+}
+
+impl PriorityChain {
+    /// Creates a new empty priority chain.
+    pub fn new() -> Self {
+        Self {
+            groups: Vec::new(),
+            name: None,
+        }
+    }
+    
+    /// Creates a new named priority chain.
+    pub fn with_name<S: Into<String>>(name: S) -> Self {
+        Self {
+            groups: Vec::new(),
+            name: Some(name.into()),
+        }
+    }
+    
+    /// Returns the name of this priority chain, if any.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+    
+    /// Sets the name of this priority chain.
+    pub fn set_name<S: Into<String>>(&mut self, name: S) {
+        self.name = Some(name.into());
+    }
+    
+    /// Adds a handler group to this chain.
+    /// 
+    /// Groups are automatically sorted by priority after insertion.
+    pub fn add_group(&mut self, group: HandlerGroup) {
+        self.groups.push(group);
+        // Sort groups by priority (highest first)
+        self.groups.sort_by(|a, b| b.priority().cmp(&a.priority()));
+    }
+    
+    /// Removes a handler group by its priority.
+    /// 
+    /// If multiple groups have the same priority, only the first one is removed.
+    pub fn remove_group_by_priority(&mut self, priority: Priority) -> Option<HandlerGroup> {
+        if let Some(pos) = self.groups.iter().position(|g| g.priority() == priority) {
+            Some(self.groups.remove(pos))
+        } else {
+            None
+        }
+    }
+    
+    /// Removes a handler group by its name.
+    pub fn remove_group_by_name(&mut self, name: &str) -> Option<HandlerGroup> {
+        if let Some(pos) = self.groups.iter().position(|g| {
+            g.name().map(|n| n == name).unwrap_or(false)
+        }) {
+            Some(self.groups.remove(pos))
+        } else {
+            None
+        }
+    }
+    
+    /// Returns a reference to all groups in priority order.
+    pub fn groups(&self) -> &[HandlerGroup] {
+        &self.groups
+    }
+    
+    /// Returns a mutable reference to all groups.
+    /// 
+    /// Note: After modifying group priorities, call `resort()` to maintain order.
+    pub fn groups_mut(&mut self) -> &mut [HandlerGroup] {
+        &mut self.groups
+    }
+    
+    /// Resorts groups by priority after manual modifications.
+    pub fn resort(&mut self) {
+        self.groups.sort_by(|a, b| b.priority().cmp(&a.priority()));
+    }
+    
+    /// Returns the number of groups in this chain.
+    pub fn group_count(&self) -> usize {
+        self.groups.len()
+    }
+    
+    /// Returns the total number of handlers across all groups.
+    pub fn total_handler_count(&self) -> usize {
+        self.groups.iter().map(|g| g.handler_count()).sum()
+    }
+    
+    /// Returns whether this chain is empty.
+    pub fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+    
+    /// Clears all groups from this chain.
+    pub fn clear(&mut self) {
+        self.groups.clear();
+    }
+    
+    /// Finds a group by its priority.
+    pub fn find_group_by_priority(&self, priority: Priority) -> Option<&HandlerGroup> {
+        self.groups.iter().find(|g| g.priority() == priority)
+    }
+    
+    /// Finds a group by its name.
+    pub fn find_group_by_name(&self, name: &str) -> Option<&HandlerGroup> {
+        self.groups.iter().find(|g| {
+            g.name().map(|n| n == name).unwrap_or(false)
+        })
+    }
+    
+    /// Finds a mutable reference to a group by its priority.
+    pub fn find_group_by_priority_mut(&mut self, priority: Priority) -> Option<&mut HandlerGroup> {
+        self.groups.iter_mut().find(|g| g.priority() == priority)
+    }
+    
+    /// Finds a mutable reference to a group by its name.
+    pub fn find_group_by_name_mut(&mut self, name: &str) -> Option<&mut HandlerGroup> {
+        self.groups.iter_mut().find(|g| {
+            g.name().map(|n| n == name).unwrap_or(false)
+        })
+    }
+    
+    /// Returns an iterator over enabled groups in priority order.
+    pub fn enabled_groups(&self) -> impl Iterator<Item = &HandlerGroup> {
+        self.groups.iter().filter(|g| g.is_enabled())
+    }
+    
+    /// Returns the highest priority among all groups.
+    pub fn highest_priority(&self) -> Option<Priority> {
+        self.groups.first().map(|g| g.priority())
+    }
+    
+    /// Returns the lowest priority among all groups.
+    pub fn lowest_priority(&self) -> Option<Priority> {
+        self.groups.last().map(|g| g.priority())
+    }
+    
+    /// Creates a flattened iterator over all handler IDs in priority order.
+    pub fn all_handler_ids(&self) -> impl Iterator<Item = &String> {
+        self.groups.iter()
+            .filter(|g| g.is_enabled())
+            .flat_map(|g| g.handler_ids().iter())
+    }
+}
+
+impl Default for PriorityChain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,5 +776,309 @@ mod tests {
         assert_eq!(priority.value(), 600);
         assert!(priority > Priority::Normal);
         assert!(priority < Priority::High);
+    }
+    
+    #[test]
+    fn test_handler_group_creation() {
+        let group = HandlerGroup::new(Priority::High);
+        assert_eq!(group.priority(), Priority::High);
+        assert!(group.is_enabled());
+        assert!(group.is_empty());
+        assert_eq!(group.handler_count(), 0);
+        assert!(group.name().is_none());
+        
+        let named_group = HandlerGroup::with_name(Priority::Low, "test_group");
+        assert_eq!(named_group.name(), Some("test_group"));
+        assert_eq!(named_group.priority(), Priority::Low);
+    }
+    
+    #[test]
+    fn test_handler_group_management() {
+        let mut group = HandlerGroup::new(Priority::Normal);
+        
+        // Test adding handlers
+        group.add_handler("handler1".to_string());
+        group.add_handler("handler2".to_string());
+        assert_eq!(group.handler_count(), 2);
+        assert!(!group.is_empty());
+        
+        // Test contains handler
+        assert!(group.contains_handler("handler1"));
+        assert!(group.contains_handler("handler2"));
+        assert!(!group.contains_handler("handler3"));
+        
+        // Test handler IDs
+        let ids = group.handler_ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"handler1".to_string()));
+        assert!(ids.contains(&"handler2".to_string()));
+        
+        // Test removing handlers
+        assert!(group.remove_handler("handler1"));
+        assert!(!group.remove_handler("nonexistent"));
+        assert_eq!(group.handler_count(), 1);
+        assert!(!group.contains_handler("handler1"));
+        assert!(group.contains_handler("handler2"));
+        
+        // Test clear
+        group.clear();
+        assert!(group.is_empty());
+        assert_eq!(group.handler_count(), 0);
+    }
+    
+    #[test]
+    fn test_handler_group_properties() {
+        let mut group = HandlerGroup::new(Priority::High);
+        
+        // Test priority modification
+        group.set_priority(Priority::Critical);
+        assert_eq!(group.priority(), Priority::Critical);
+        
+        // Test name modification
+        group.set_name("new_name");
+        assert_eq!(group.name(), Some("new_name"));
+        
+        // Test enable/disable
+        assert!(group.is_enabled());
+        group.disable();
+        assert!(!group.is_enabled());
+        group.enable();
+        assert!(group.is_enabled());
+    }
+    
+    #[test]
+    fn test_handler_group_ordering() {
+        let high_group = HandlerGroup::new(Priority::High);
+        let low_group = HandlerGroup::new(Priority::Low);
+        let critical_group = HandlerGroup::new(Priority::Critical);
+        
+        assert!(critical_group > high_group);
+        assert!(high_group > low_group);
+        assert!(critical_group > low_group);
+        
+        // Test equality based on priority
+        let another_high = HandlerGroup::new(Priority::High);
+        assert_eq!(high_group, another_high);
+    }
+    
+    #[test]
+    fn test_priority_chain_creation() {
+        let chain = PriorityChain::new();
+        assert!(chain.is_empty());
+        assert_eq!(chain.group_count(), 0);
+        assert_eq!(chain.total_handler_count(), 0);
+        assert!(chain.name().is_none());
+        
+        let named_chain = PriorityChain::with_name("test_chain");
+        assert_eq!(named_chain.name(), Some("test_chain"));
+    }
+    
+    #[test]
+    fn test_priority_chain_group_management() {
+        let mut chain = PriorityChain::new();
+        
+        // Create test groups
+        let mut high_group = HandlerGroup::with_name(Priority::High, "high_group");
+        high_group.add_handler("handler1".to_string());
+        high_group.add_handler("handler2".to_string());
+        
+        let mut low_group = HandlerGroup::with_name(Priority::Low, "low_group");
+        low_group.add_handler("handler3".to_string());
+        
+        let mut critical_group = HandlerGroup::with_name(Priority::Critical, "critical_group");
+        critical_group.add_handler("handler4".to_string());
+        
+        // Add groups in random order
+        chain.add_group(low_group);
+        chain.add_group(critical_group);
+        chain.add_group(high_group);
+        
+        // Verify automatic sorting by priority
+        assert_eq!(chain.group_count(), 3);
+        assert_eq!(chain.total_handler_count(), 4);
+        
+        let groups = chain.groups();
+        assert_eq!(groups[0].priority(), Priority::Critical); // Highest first
+        assert_eq!(groups[1].priority(), Priority::High);
+        assert_eq!(groups[2].priority(), Priority::Low);     // Lowest last
+        
+        // Test highest and lowest priority
+        assert_eq!(chain.highest_priority(), Some(Priority::Critical));
+        assert_eq!(chain.lowest_priority(), Some(Priority::Low));
+    }
+    
+    #[test]
+    fn test_priority_chain_find_operations() {
+        let mut chain = PriorityChain::new();
+        
+        let mut group1 = HandlerGroup::with_name(Priority::High, "group1");
+        group1.add_handler("handler1".to_string());
+        
+        let mut group2 = HandlerGroup::with_name(Priority::Low, "group2");
+        group2.add_handler("handler2".to_string());
+        
+        chain.add_group(group1);
+        chain.add_group(group2);
+        
+        // Test find by priority
+        let found_high = chain.find_group_by_priority(Priority::High);
+        assert!(found_high.is_some());
+        assert_eq!(found_high.unwrap().name(), Some("group1"));
+        
+        let found_critical = chain.find_group_by_priority(Priority::Critical);
+        assert!(found_critical.is_none());
+        
+        // Test find by name
+        let found_by_name = chain.find_group_by_name("group2");
+        assert!(found_by_name.is_some());
+        assert_eq!(found_by_name.unwrap().priority(), Priority::Low);
+        
+        let not_found = chain.find_group_by_name("nonexistent");
+        assert!(not_found.is_none());
+    }
+    
+    #[test]
+    fn test_priority_chain_removal() {
+        let mut chain = PriorityChain::new();
+        
+        let group1 = HandlerGroup::with_name(Priority::High, "group1");
+        let group2 = HandlerGroup::with_name(Priority::Low, "group2");
+        
+        chain.add_group(group1);
+        chain.add_group(group2);
+        assert_eq!(chain.group_count(), 2);
+        
+        // Test remove by priority
+        let removed = chain.remove_group_by_priority(Priority::High);
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().name(), Some("group1"));
+        assert_eq!(chain.group_count(), 1);
+        
+        // Test remove by name
+        let removed = chain.remove_group_by_name("group2");
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().priority(), Priority::Low);
+        assert!(chain.is_empty());
+        
+        // Test remove non-existent
+        let not_removed = chain.remove_group_by_priority(Priority::Critical);
+        assert!(not_removed.is_none());
+    }
+    
+    #[test]
+    fn test_priority_chain_enabled_groups() {
+        let mut chain = PriorityChain::new();
+        
+        let mut group1 = HandlerGroup::new(Priority::High);
+        group1.add_handler("handler1".to_string());
+        
+        let mut group2 = HandlerGroup::new(Priority::Low);
+        group2.add_handler("handler2".to_string());
+        group2.disable(); // Disable this group
+        
+        let mut group3 = HandlerGroup::new(Priority::Normal);
+        group3.add_handler("handler3".to_string());
+        
+        chain.add_group(group1);
+        chain.add_group(group2);
+        chain.add_group(group3);
+        
+        // Test enabled groups iterator
+        let enabled: Vec<_> = chain.enabled_groups().collect();
+        assert_eq!(enabled.len(), 2); // Only group1 and group3 should be enabled
+        
+        // Verify the disabled group is not included
+        assert!(enabled.iter().all(|g| g.is_enabled()));
+        assert!(enabled.iter().any(|g| g.priority() == Priority::High));
+        assert!(enabled.iter().any(|g| g.priority() == Priority::Normal));
+        assert!(!enabled.iter().any(|g| g.priority() == Priority::Low));
+    }
+    
+    #[test]
+    fn test_priority_chain_all_handler_ids() {
+        let mut chain = PriorityChain::new();
+        
+        let mut group1 = HandlerGroup::new(Priority::High);
+        group1.add_handler("handler1".to_string());
+        group1.add_handler("handler2".to_string());
+        
+        let mut group2 = HandlerGroup::new(Priority::Low);
+        group2.add_handler("handler3".to_string());
+        group2.disable(); // This group's handlers should not be included
+        
+        let mut group3 = HandlerGroup::new(Priority::Normal);
+        group3.add_handler("handler4".to_string());
+        
+        chain.add_group(group1);
+        chain.add_group(group2);
+        chain.add_group(group3);
+        
+        // Collect all handler IDs from enabled groups
+        let all_ids: Vec<_> = chain.all_handler_ids().collect();
+        
+        // Should have 3 handlers (2 from high group, 1 from normal group)
+        // The disabled low group should not contribute any handlers
+        assert_eq!(all_ids.len(), 3);
+        assert!(all_ids.contains(&&"handler1".to_string()));
+        assert!(all_ids.contains(&&"handler2".to_string()));
+        assert!(all_ids.contains(&&"handler4".to_string()));
+        assert!(!all_ids.contains(&&"handler3".to_string())); // From disabled group
+    }
+    
+    #[test]
+    fn test_priority_chain_mutable_operations() {
+        let mut chain = PriorityChain::new();
+        
+        let group1 = HandlerGroup::with_name(Priority::High, "group1");
+        let group2 = HandlerGroup::with_name(Priority::Low, "group2");
+        
+        chain.add_group(group1);
+        chain.add_group(group2);
+        
+        // Test mutable find operations
+        {
+            let group_mut = chain.find_group_by_priority_mut(Priority::High);
+            assert!(group_mut.is_some());
+            let group = group_mut.unwrap();
+            group.add_handler("new_handler".to_string());
+        }
+        
+        {
+            let group_mut = chain.find_group_by_name_mut("group2");
+            assert!(group_mut.is_some());
+            let group = group_mut.unwrap();
+            group.set_priority(Priority::Critical);
+        }
+        
+        // Resort after modifying priorities
+        chain.resort();
+        
+        // Verify the modified group is now first due to Critical priority
+        let groups = chain.groups();
+        assert_eq!(groups[0].name(), Some("group2"));
+        assert_eq!(groups[0].priority(), Priority::Critical);
+        
+        // Verify the handler was added
+        let high_group = chain.find_group_by_priority(Priority::High).unwrap();
+        assert!(high_group.contains_handler("new_handler"));
+    }
+    
+    #[test]
+    fn test_priority_chain_clear() {
+        let mut chain = PriorityChain::new();
+        
+        let group1 = HandlerGroup::new(Priority::High);
+        let group2 = HandlerGroup::new(Priority::Low);
+        
+        chain.add_group(group1);
+        chain.add_group(group2);
+        assert_eq!(chain.group_count(), 2);
+        
+        chain.clear();
+        assert!(chain.is_empty());
+        assert_eq!(chain.group_count(), 0);
+        assert_eq!(chain.total_handler_count(), 0);
+        assert!(chain.highest_priority().is_none());
+        assert!(chain.lowest_priority().is_none());
     }
 }

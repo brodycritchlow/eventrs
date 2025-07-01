@@ -667,4 +667,277 @@ mod tests {
         let results = result.unwrap();
         assert_eq!(results.len(), 1);
     }
+
+    #[test]
+    fn test_emit_stream() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create a stream of events
+        let events = (1..=5).map(|i| TestEvent {
+            value: i,
+            message: format!("stream_event_{}", i),
+        });
+        
+        // Emit stream
+        let processed_count = bus.emit_stream(events).unwrap();
+        
+        // Verify all events were processed
+        assert_eq!(processed_count, 5);
+        
+        let processed = processed_events.lock().unwrap();
+        assert_eq!(*processed, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_emit_stream_with_failures() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler that fails for even values
+        let events_clone = Arc::clone(&processed_events);
+        bus.on_fallible(move |event: TestEvent| -> Result<(), TestError> {
+            if event.value % 2 == 0 {
+                Err(TestError("Even values not allowed".to_string()))
+            } else {
+                events_clone.lock().unwrap().push(event.value);
+                Ok(())
+            }
+        });
+        
+        // Create a stream with both even and odd values
+        let events = (1..=6).map(|i| TestEvent {
+            value: i,
+            message: format!("stream_event_{}", i),
+        });
+        
+        // Emit stream (should continue even with failures)
+        let processed_count = bus.emit_stream(events).unwrap();
+        
+        // Should process all events (even though some handlers fail)
+        assert_eq!(processed_count, 6);
+        
+        // Only odd values should have been processed by the handler
+        let processed = processed_events.lock().unwrap();
+        assert_eq!(*processed, vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn test_emit_stream_concurrent() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create a larger stream to test concurrent processing
+        let events = (1..=10).map(|i| TestEvent {
+            value: i,
+            message: format!("concurrent_stream_event_{}", i),
+        });
+        
+        // Emit stream with 3 workers
+        let processed_count = bus.emit_stream_concurrent(events, 3).unwrap();
+        
+        // Verify all events were processed
+        assert_eq!(processed_count, 10);
+        
+        // Give time for concurrent processing
+        thread::sleep(Duration::from_millis(10));
+        
+        let mut processed = processed_events.lock().unwrap().clone();
+        processed.sort(); // Order might vary due to concurrent processing
+        assert_eq!(processed, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn test_emit_stream_concurrent_auto_workers() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create stream
+        let events = (1..=5).map(|i| TestEvent {
+            value: i,
+            message: format!("auto_worker_event_{}", i),
+        });
+        
+        // Emit stream with auto-detected workers (0 = auto)
+        let processed_count = bus.emit_stream_concurrent(events, 0).unwrap();
+        
+        // Verify all events were processed
+        assert_eq!(processed_count, 5);
+        
+        // Give time for concurrent processing
+        thread::sleep(Duration::from_millis(10));
+        
+        let mut processed = processed_events.lock().unwrap().clone();
+        processed.sort();
+        assert_eq!(processed, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_emit_and_forget() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Emit events using fire-and-forget
+        for i in 1..=3 {
+            let result = bus.emit_and_forget(TestEvent {
+                value: i,
+                message: format!("fire_and_forget_{}", i),
+            });
+            assert!(result.is_ok());
+        }
+        
+        // Give time for async processing
+        thread::sleep(Duration::from_millis(50));
+        
+        // Check that events were processed
+        let mut processed = processed_events.lock().unwrap().clone();
+        processed.sort();
+        assert_eq!(processed, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_emit_bulk_and_forget() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_events = Arc::new(Mutex::new(Vec::new()));
+        
+        // Register handler
+        let events_clone = Arc::clone(&processed_events);
+        bus.on(move |event: TestEvent| {
+            events_clone.lock().unwrap().push(event.value);
+        });
+        
+        // Create bulk events
+        let events = vec![
+            TestEvent { value: 1, message: "bulk_1".to_string() },
+            TestEvent { value: 2, message: "bulk_2".to_string() },
+            TestEvent { value: 3, message: "bulk_3".to_string() },
+            TestEvent { value: 4, message: "bulk_4".to_string() },
+        ];
+        
+        // Emit bulk events using fire-and-forget
+        let result = bus.emit_bulk_and_forget(events);
+        assert!(result.is_ok());
+        
+        // Give time for async processing
+        thread::sleep(Duration::from_millis(50));
+        
+        // Check that events were processed
+        let mut processed = processed_events.lock().unwrap().clone();
+        processed.sort();
+        assert_eq!(processed, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_emit_bulk_and_forget_empty() {
+        let bus = ThreadSafeEventBus::new();
+        
+        // Test empty bulk
+        let events: Vec<TestEvent> = vec![];
+        let result = bus.emit_bulk_and_forget(events);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stream_processing_after_shutdown() {
+        let bus = ThreadSafeEventBus::new();
+        
+        // Shutdown the bus
+        bus.shutdown().unwrap();
+        
+        // Try stream processing after shutdown
+        let events = (1..=3).map(|i| TestEvent {
+            value: i,
+            message: format!("after_shutdown_{}", i),
+        });
+        
+        let result = bus.emit_stream(events);
+        assert!(result.is_err());
+        
+        // Try concurrent stream processing after shutdown
+        let events = (1..=3).map(|i| TestEvent {
+            value: i,
+            message: format!("concurrent_after_shutdown_{}", i),
+        });
+        
+        let result = bus.emit_stream_concurrent(events, 2);
+        assert!(result.is_err());
+        
+        // Try fire-and-forget after shutdown
+        let result = bus.emit_and_forget(TestEvent {
+            value: 1,
+            message: "forget_after_shutdown".to_string(),
+        });
+        assert!(result.is_err());
+        
+        // Try bulk fire-and-forget after shutdown
+        let events = vec![TestEvent { value: 1, message: "bulk_after_shutdown".to_string() }];
+        let result = bus.emit_bulk_and_forget(events);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_stream() {
+        let bus = ThreadSafeEventBus::new();
+        
+        // Test empty stream
+        let events = std::iter::empty::<TestEvent>();
+        let processed_count = bus.emit_stream(events).unwrap();
+        assert_eq!(processed_count, 0);
+        
+        // Test empty concurrent stream
+        let events = std::iter::empty::<TestEvent>();
+        let processed_count = bus.emit_stream_concurrent(events, 2).unwrap();
+        assert_eq!(processed_count, 0);
+    }
+
+    #[test]
+    fn test_large_stream_processing() {
+        let bus = ThreadSafeEventBus::new();
+        let processed_count = Arc::new(Mutex::new(0));
+        
+        // Register handler that just counts
+        let count_clone = Arc::clone(&processed_count);
+        bus.on(move |_event: TestEvent| {
+            let mut count = count_clone.lock().unwrap();
+            *count += 1;
+        });
+        
+        // Create a large stream (1000 events)
+        let events = (1..=1000).map(|i| TestEvent {
+            value: i,
+            message: format!("large_stream_{}", i),
+        });
+        
+        // Process stream
+        let processed = bus.emit_stream(events).unwrap();
+        assert_eq!(processed, 1000);
+        
+        // Verify all events were handled
+        let final_count = *processed_count.lock().unwrap();
+        assert_eq!(final_count, 1000);
+    }
 }

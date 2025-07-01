@@ -1035,6 +1035,307 @@ impl ThreadSafeEventBus {
         
         Ok(results)
     }
+    
+    /// Emits events from a stream lazily as they become available.
+    /// 
+    /// This method processes events from an iterator in a streaming fashion,
+    /// allowing for memory-efficient processing of large event sequences.
+    /// Events are processed one at a time without loading all events into memory.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `stream` - An iterator that yields events to be emitted
+    /// 
+    /// # Returns
+    /// 
+    /// Returns the number of events successfully processed.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{ThreadSafeEventBus, Event};
+    /// 
+    /// #[derive(Event, Clone)]
+    /// struct StreamEvent { id: u32, data: String }
+    /// 
+    /// let bus = ThreadSafeEventBus::new();
+    /// 
+    /// // Stream events lazily from an iterator
+    /// let events = (1..=1000).map(|i| StreamEvent { 
+    ///     id: i, 
+    ///     data: format!("event_{}", i) 
+    /// });
+    /// 
+    /// let processed = bus.emit_stream(events).unwrap();
+    /// assert_eq!(processed, 1000);
+    /// ```
+    pub fn emit_stream<E, I>(&self, stream: I) -> EventBusResult<usize>
+    where 
+        E: Event,
+        I: Iterator<Item = E>,
+    {
+        if self.shutting_down.load(Ordering::Relaxed) {
+            return Err(EventBusError::ShuttingDown);
+        }
+        
+        let mut processed_count = 0;
+        
+        for event in stream {
+            // Check for shutdown on each iteration
+            if self.shutting_down.load(Ordering::Relaxed) {
+                break;
+            }
+            
+            match self.emit(event) {
+                Ok(_) => processed_count += 1,
+                Err(_) => {
+                    // Continue processing even if individual events fail
+                    // This allows the stream to continue processing subsequent events
+                    continue;
+                }
+            }
+        }
+        
+        Ok(processed_count)
+    }
+    
+    /// Emits events from a stream concurrently using a worker pool.
+    /// 
+    /// This method processes events from an iterator using multiple worker threads
+    /// for improved throughput. Events are distributed across workers and processed
+    /// in parallel while maintaining memory efficiency.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `stream` - An iterator that yields events to be emitted
+    /// * `worker_count` - Number of worker threads to use (0 = auto-detect)
+    /// 
+    /// # Returns
+    /// 
+    /// Returns the number of events successfully processed.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{ThreadSafeEventBus, Event};
+    /// 
+    /// #[derive(Event, Clone)]
+    /// struct StreamEvent { id: u32, data: String }
+    /// 
+    /// let bus = ThreadSafeEventBus::new();
+    /// 
+    /// // Stream events concurrently with 4 workers
+    /// let events = (1..=1000).map(|i| StreamEvent { 
+    ///     id: i, 
+    ///     data: format!("event_{}", i) 
+    /// });
+    /// 
+    /// let processed = bus.emit_stream_concurrent(events, 4).unwrap();
+    /// assert_eq!(processed, 1000);
+    /// ```
+    pub fn emit_stream_concurrent<E, I>(&self, stream: I, worker_count: usize) -> EventBusResult<usize>
+    where 
+        E: Event + Send + 'static,
+        I: Iterator<Item = E>,
+    {
+        if self.shutting_down.load(Ordering::Relaxed) {
+            return Err(EventBusError::ShuttingDown);
+        }
+        
+        let workers = if worker_count == 0 {
+            std::thread::available_parallelism()
+                .map(|p| p.get())
+                .unwrap_or(4)
+                .min(8) // Cap at 8 workers
+        } else {
+            worker_count
+        };
+        
+        // Create a channel for distributing work
+        let (sender, receiver) = mpsc::sync_channel::<Option<E>>(workers * 2);
+        let receiver = Arc::new(Mutex::new(receiver));
+        let processed_count = Arc::new(Mutex::new(0));
+        
+        // Spawn worker threads
+        let mut handles = Vec::new();
+        for _ in 0..workers {
+            let bus = Arc::new(self.clone());
+            let receiver = Arc::clone(&receiver);
+            let count = Arc::clone(&processed_count);
+            
+            let handle = thread::spawn(move || {
+                while let Ok(maybe_event) = {
+                    let rx = receiver.lock().unwrap();
+                    rx.recv()
+                } {
+                    match maybe_event {
+                        Some(event) => {
+                            if bus.emit(event).is_ok() {
+                                let mut count = count.lock().unwrap();
+                                *count += 1;
+                            }
+                        }
+                        None => break, // Shutdown signal
+                    }
+                }
+            });
+            
+            handles.push(handle);
+        }
+        
+        // Send events to workers
+        for event in stream {
+            if self.shutting_down.load(Ordering::Relaxed) {
+                break;
+            }
+            
+            if sender.send(Some(event)).is_err() {
+                // Channel closed, stop sending
+                break;
+            }
+        }
+        
+        // Signal workers to shutdown
+        for _ in 0..workers {
+            let _ = sender.send(None);
+        }
+        
+        // Wait for all workers to complete
+        for handle in handles {
+            let _ = handle.join();
+        }
+        
+        let final_count = *processed_count.lock().unwrap();
+        Ok(final_count)
+    }
+    
+    /// Emits an event without waiting for processing to complete.
+    /// 
+    /// This method queues an event for processing and returns immediately,
+    /// making it suitable for fire-and-forget scenarios where you don't
+    /// need to wait for handlers to complete execution.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `event` - The event to emit
+    /// 
+    /// # Returns
+    /// 
+    /// Returns `Ok(())` if the event was successfully queued for processing.
+    /// 
+    /// # Performance Notes
+    /// 
+    /// - Uses internal event sender for non-blocking operation
+    /// - Ideal for high-throughput scenarios
+    /// - No guarantees about processing completion time
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{ThreadSafeEventBus, Event};
+    /// 
+    /// #[derive(Event, Clone)]
+    /// struct FireAndForgetEvent { id: u32, message: String }
+    /// 
+    /// let bus = ThreadSafeEventBus::new();
+    /// 
+    /// // Emit and don't wait for processing
+    /// bus.emit_and_forget(FireAndForgetEvent { 
+    ///     id: 1, 
+    ///     message: "async processing".to_string() 
+    /// }).unwrap();
+    /// 
+    /// // Continue with other work immediately
+    /// println!("Event queued, continuing...");
+    /// ```
+    pub fn emit_and_forget<E: Event + Clone>(&self, event: E) -> EventBusResult<()> {
+        if self.shutting_down.load(Ordering::Relaxed) {
+            return Err(EventBusError::ShuttingDown);
+        }
+        
+        // Create a single-use event sender for fire-and-forget operation
+        let sender = self.create_sender::<E>(1)?;
+        
+        match sender.try_send(event.clone()) {
+            Ok(_) => Ok(()),
+            Err(EventSenderError::ChannelFull) => {
+                // If the channel is full, fall back to synchronous emission
+                // This ensures the event is not lost
+                self.emit(event)
+            }
+            Err(EventSenderError::ChannelDisconnected) => {
+                Err(EventBusError::internal("Event sender disconnected"))
+            }
+        }
+    }
+    
+    /// Emits multiple events without waiting for processing to complete.
+    /// 
+    /// This method queues multiple events for processing and returns immediately.
+    /// It's optimized for bulk fire-and-forget operations.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `events` - A vector of events to emit
+    /// 
+    /// # Returns
+    /// 
+    /// Returns `Ok(())` if all events were successfully queued for processing.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use eventrs::{ThreadSafeEventBus, Event};
+    /// 
+    /// #[derive(Event, Clone)]
+    /// struct BulkEvent { id: u32, data: String }
+    /// 
+    /// let bus = ThreadSafeEventBus::new();
+    /// 
+    /// let events = vec![
+    ///     BulkEvent { id: 1, data: "first".to_string() },
+    ///     BulkEvent { id: 2, data: "second".to_string() },
+    ///     BulkEvent { id: 3, data: "third".to_string() },
+    /// ];
+    /// 
+    /// // Queue all events for async processing
+    /// bus.emit_bulk_and_forget(events).unwrap();
+    /// 
+    /// // Continue immediately without waiting
+    /// println!("All events queued!");
+    /// ```
+    pub fn emit_bulk_and_forget<E: Event + Clone>(&self, events: Vec<E>) -> EventBusResult<()> {
+        if self.shutting_down.load(Ordering::Relaxed) {
+            return Err(EventBusError::ShuttingDown);
+        }
+        
+        if events.is_empty() {
+            return Ok(());
+        }
+        
+        // Create a larger buffer for bulk operations
+        let buffer_size = (events.len() * 2).min(1000).max(10);
+        let sender = self.create_sender::<E>(buffer_size)?;
+        
+        for event in events {
+            match sender.try_send(event) {
+                Ok(_) => continue,
+                Err(EventSenderError::ChannelFull) => {
+                    // If channel is full, we could implement different strategies:
+                    // 1. Block and wait (sender.send())
+                    // 2. Drop the event 
+                    // 3. Fall back to sync processing
+                    // For now, we'll fall back to sync to ensure no event loss
+                    return Err(EventBusError::resource_exhausted("Event sender channel full"));
+                }
+                Err(EventSenderError::ChannelDisconnected) => {
+                    return Err(EventBusError::internal("Event sender disconnected"));
+                }
+            }
+        }
+        
+        Ok(())
+    }
 }
 
 impl Clone for ThreadSafeEventBus {

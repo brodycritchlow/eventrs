@@ -1,0 +1,18 @@
+[package]
+name = "eventrs-derive"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Derive macros for EventRS event system"
+repository.workspace = true
+license.workspace = true
+keywords = ["events", "macro", "derive", "proc-macro"]
+categories = ["development-tools::procedural-macro-helpers"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true

@@ -1,0 +1,50 @@
+[package]
+name = "eventrs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "High-performance, type-safe event system for Rust"
+repository.workspace = true
+license.workspace = true
+keywords = ["events", "async", "performance", "type-safe", "event-driven"]
+categories = ["asynchronous", "data-structures", "development-tools"]
+readme = "README.md"
+
+[features]
+default = ["async", "std"]
+# Core features
+async = ["tokio", "futures"]
+std = []
+# Optional features
+metrics = ["prometheus"]
+tracing = ["tracing-core"]
+serde = ["dep:serde", "serde_json"]
+testing = []
+
+[dependencies]
+# Core dependencies
+eventrs-derive = { path = "../eventrs-derive" }
+thiserror.workspace = true
+
+# Async support
+tokio = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+
+# Optional features
+prometheus = { workspace = true, optional = true }
+tracing-core = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+tokio-test.workspace = true
+criterion.workspace = true
+proptest.workspace = true
+futures.workspace = true
+async-std.workspace = true
+
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

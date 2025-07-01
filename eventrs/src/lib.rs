@@ -64,6 +64,7 @@ pub mod async_event_bus;
 
 pub mod filter;
 pub mod middleware;
+pub mod thread_safe;
 
 #[cfg(feature = "metrics")]
 pub mod metrics;
@@ -91,6 +92,7 @@ pub use filter::{
     BoxedFilter, SharedFilter
 };
 pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
+pub use thread_safe::{ThreadSafeEventBus, ThreadSafeEventBusConfig};
 
 #[cfg(feature = "metrics")]
 pub use metrics::{
@@ -110,6 +112,7 @@ pub mod prelude {
     
     pub use crate::{Filter, PredicateFilter, FilterChain, ChainMode};
     pub use crate::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareResult, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
+    pub use crate::{ThreadSafeEventBus, ThreadSafeEventBusConfig};
     
     #[cfg(feature = "metrics")]
     pub use crate::{EventBusMetrics, EmissionResult, HandlerResult, EmissionStats, HandlerMetrics};
@@ -124,8 +127,11 @@ mod test_builder;
 #[cfg(test)]
 mod test_middleware;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "metrics"))]
 mod test_metrics;
+
+#[cfg(test)]
+mod test_thread_safe;
 
 #[cfg(test)]
 mod tests {

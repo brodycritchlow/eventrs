@@ -5,8 +5,8 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use eventrs::prelude::*;
+use eventrs::{AnyEvent, PredicateAnyFilter};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Debug)]
@@ -112,7 +112,7 @@ fn benchmark_handler_execution(c: &mut Criterion) {
             |b, &handler_count| {
                 let mut bus = EventBus::new();
                 
-                for _ in 0..*handler_count {
+                for _ in 0..handler_count {
                     let counter = Arc::new(AtomicUsize::new(0));
                     bus.on(move |_event: SimpleEvent| {
                         counter.fetch_add(1, Ordering::Relaxed);
@@ -175,7 +175,13 @@ fn benchmark_filtering(c: &mut Criterion) {
         });
         
         // Add a filter that only allows even values
-        let filter = PredicateFilter::new(|event: &BenchmarkEvent| event.value % 2 == 0);
+        let filter = PredicateAnyFilter::new("even_filter", |event: &dyn AnyEvent| {
+            if let Some(benchmark_event) = event.as_any().downcast_ref::<BenchmarkEvent>() {
+                benchmark_event.value % 2 == 0
+            } else {
+                false
+            }
+        });
         bus.add_global_filter("even_filter", Box::new(filter));
         
         b.iter(|| {
@@ -196,8 +202,8 @@ fn benchmark_middleware(c: &mut Criterion) {
     let mut group = c.benchmark_group("middleware");
     
     group.bench_function("logging_middleware", |b| {
-        let bus = EventBusBuilder::new()
-            .with_middleware(Box::new(LoggingMiddleware::new()))
+        let mut bus = EventBusBuilder::new()
+            .with_middleware(Box::new(LoggingMiddleware::new("benchmark".to_string())))
             .build();
         
         let counter = Arc::new(AtomicUsize::new(0));

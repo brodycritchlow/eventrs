@@ -23,8 +23,8 @@ fn main() {
 
     // Demonstrate HandlerGroup functionality
     demonstrate_handler_groups();
-    
-    // Demonstrate PriorityChain functionality  
+
+    // Demonstrate PriorityChain functionality
     demonstrate_priority_chain();
 
     // Demonstrate practical usage patterns
@@ -50,33 +50,44 @@ fn demonstrate_handler_groups() {
     logging_group.add_handler("metrics_collector".to_string());
 
     println!("Created {} groups:", 3);
-    println!("  • {} ({}): {} handlers", 
-             auth_group.name().unwrap(), 
-             auth_group.priority(),
-             auth_group.handler_count());
-    
-    println!("  • {} ({}): {} handlers", 
-             business_group.name().unwrap(), 
-             business_group.priority(),
-             business_group.handler_count());
-    
-    println!("  • {} ({}): {} handlers", 
-             logging_group.name().unwrap(), 
-             logging_group.priority(),
-             logging_group.handler_count());
+    println!(
+        "  • {} ({}): {} handlers",
+        auth_group.name().unwrap(),
+        auth_group.priority(),
+        auth_group.handler_count()
+    );
+
+    println!(
+        "  • {} ({}): {} handlers",
+        business_group.name().unwrap(),
+        business_group.priority(),
+        business_group.handler_count()
+    );
+
+    println!(
+        "  • {} ({}): {} handlers",
+        logging_group.name().unwrap(),
+        logging_group.priority(),
+        logging_group.handler_count()
+    );
 
     // Demonstrate group management
     println!("\nGroup management operations:");
-    println!("  • Auth group contains 'auth_validator': {}", 
-             auth_group.contains_handler("auth_validator"));
-    
+    println!(
+        "  • Auth group contains 'auth_validator': {}",
+        auth_group.contains_handler("auth_validator")
+    );
+
     // Temporarily disable logging for performance
     logging_group.disable();
     println!("  • Logging group enabled: {}", logging_group.is_enabled());
-    
+
     // Re-enable logging
     logging_group.enable();
-    println!("  • Logging group re-enabled: {}", logging_group.is_enabled());
+    println!(
+        "  • Logging group re-enabled: {}",
+        logging_group.is_enabled()
+    );
 
     println!();
 }
@@ -105,25 +116,32 @@ fn demonstrate_priority_chain() {
     notification_group.add_handler("sms_notifier".to_string());
 
     // Add groups to chain (order doesn't matter - they'll be sorted by priority)
-    chain.add_group(business_group);      // Normal priority
-    chain.add_group(notification_group); // Low priority  
-    chain.add_group(auth_group);         // Critical priority
-    chain.add_group(validation_group);   // High priority
+    chain.add_group(business_group); // Normal priority
+    chain.add_group(notification_group); // Low priority
+    chain.add_group(auth_group); // Critical priority
+    chain.add_group(validation_group); // High priority
 
-    println!("Created chain '{}' with {} groups", 
-             chain.name().unwrap(), 
-             chain.group_count());
-    
-    println!("Total handlers across all groups: {}", chain.total_handler_count());
+    println!(
+        "Created chain '{}' with {} groups",
+        chain.name().unwrap(),
+        chain.group_count()
+    );
+
+    println!(
+        "Total handlers across all groups: {}",
+        chain.total_handler_count()
+    );
 
     // Show automatic priority ordering
     println!("\nExecution order (highest to lowest priority):");
     for (i, group) in chain.groups().iter().enumerate() {
-        println!("  {}. {} ({}) - {} handlers", 
-                 i + 1,
-                 group.name().unwrap_or("unnamed"),
-                 group.priority(),
-                 group.handler_count());
+        println!(
+            "  {}. {} ({}) - {} handlers",
+            i + 1,
+            group.name().unwrap_or("unnamed"),
+            group.priority(),
+            group.handler_count()
+        );
     }
 
     println!("  Highest priority: {:?}", chain.highest_priority());
@@ -132,12 +150,17 @@ fn demonstrate_priority_chain() {
     // Demonstrate finding operations
     println!("\nFinding operations:");
     if let Some(group) = chain.find_group_by_name("authentication") {
-        println!("  • Found authentication group with priority: {}", group.priority());
+        println!(
+            "  • Found authentication group with priority: {}",
+            group.priority()
+        );
     }
 
     if let Some(group) = chain.find_group_by_priority(Priority::Normal) {
-        println!("  • Found Normal priority group: {}", 
-                 group.name().unwrap_or("unnamed"));
+        println!(
+            "  • Found Normal priority group: {}",
+            group.name().unwrap_or("unnamed")
+        );
     }
 
     println!();
@@ -174,7 +197,8 @@ fn demonstrate_practical_usage() {
     notification_group.add_handler("audit_logging".to_string());
 
     // Custom priority for special processing
-    let mut special_group = HandlerGroup::with_name(Priority::from_value(600), "special_processing");
+    let mut special_group =
+        HandlerGroup::with_name(Priority::from_value(600), "special_processing");
     special_group.add_handler("fraud_detection".to_string());
     special_group.add_handler("compliance_check".to_string());
 
@@ -193,10 +217,12 @@ fn demonstrate_practical_usage() {
     println!("\nComplete execution order:");
     for (i, group) in order_chain.groups().iter().enumerate() {
         let handlers: Vec<&String> = group.handler_ids().iter().collect();
-        println!("  {}. {} ({}):", 
-                 i + 1,
-                 group.name().unwrap_or("unnamed"),
-                 group.priority());
+        println!(
+            "  {}. {} ({}):",
+            i + 1,
+            group.name().unwrap_or("unnamed"),
+            group.priority()
+        );
         for handler in handlers {
             println!("     → {}", handler);
         }
@@ -205,7 +231,11 @@ fn demonstrate_practical_usage() {
     // Demonstrate enabled groups filtering
     println!("\nEnabled groups only:");
     let enabled_count = order_chain.enabled_groups().count();
-    println!("  Enabled groups: {}/{}", enabled_count, order_chain.group_count());
+    println!(
+        "  Enabled groups: {}/{}",
+        enabled_count,
+        order_chain.group_count()
+    );
 
     // Show all handler IDs in execution order
     println!("\nAll handler IDs in priority order:");

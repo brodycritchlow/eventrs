@@ -7,20 +7,20 @@
 //!
 //! ```rust
 //! use eventrs::{EventBusMetrics, EmissionResult};
-//! 
+//!
 //! let metrics = EventBusMetrics::new();
-//! 
+//!
 //! // Metrics are automatically collected when events are emitted
 //! // and can be accessed via the metrics instance
 //! ```
 
+use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::any::TypeId;
 
 /// Comprehensive metrics collection for EventBus performance tracking.
-/// 
+///
 /// EventBusMetrics provides detailed performance monitoring including:
 /// - Event emission statistics
 /// - Handler execution metrics
@@ -125,7 +125,7 @@ impl Default for SystemMetrics {
 }
 
 /// Detailed result of an event emission with performance metrics.
-/// 
+///
 /// EmissionResult provides comprehensive information about the execution
 /// of an event emission, including timing, handler results, and any errors.
 #[derive(Debug, Clone)]
@@ -188,14 +188,14 @@ pub struct MiddlewareExecutionMetric {
 
 impl EventBusMetrics {
     /// Creates a new EventBusMetrics instance.
-    /// 
+    ///
     /// # Arguments
     /// * `enabled` - Whether to enable metrics collection
-    /// 
+    ///
     /// # Examples
     /// ```rust
     /// use eventrs::EventBusMetrics;
-    /// 
+    ///
     /// let metrics = EventBusMetrics::new(true);
     /// ```
     pub fn new(enabled: bool) -> Self {
@@ -209,40 +209,40 @@ impl EventBusMetrics {
             enabled,
         }
     }
-    
+
     /// Creates a new EventBusMetrics instance with metrics enabled.
     pub fn enabled() -> Self {
         Self::new(true)
     }
-    
+
     /// Creates a new EventBusMetrics instance with metrics disabled.
     pub fn disabled() -> Self {
         Self::new(false)
     }
-    
+
     /// Returns whether metrics collection is enabled.
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
-    
+
     /// Enables metrics collection.
     pub fn enable(&mut self) {
         self.enabled = true;
     }
-    
+
     /// Disables metrics collection.
     pub fn disable(&mut self) {
         self.enabled = false;
     }
-    
+
     /// Records the start of an event emission.
-    /// 
+    ///
     /// Returns a token that should be used with `record_emission_end`.
     pub fn start_emission(&self, event_type: TypeId) -> EmissionToken {
         if !self.enabled {
             return EmissionToken::disabled();
         }
-        
+
         EmissionToken {
             event_type,
             start_time: Instant::now(),
@@ -250,9 +250,9 @@ impl EventBusMetrics {
             enabled: true,
         }
     }
-    
+
     /// Records the completion of an event emission.
-    /// 
+    ///
     /// # Arguments
     /// * `token` - Token returned from `start_emission`
     /// * `result` - The emission result
@@ -260,56 +260,59 @@ impl EventBusMetrics {
         if !self.enabled || !token.enabled {
             return;
         }
-        
+
         let duration = token.start_time.elapsed();
-        
+
         // Update emission stats
         {
             let mut stats = self.emission_stats.write().unwrap();
             let emission_stats = stats.entry(token.event_type).or_default();
-            
+
             emission_stats.total_emissions += 1;
             if result.success {
                 emission_stats.successful_emissions += 1;
             } else {
                 emission_stats.failed_emissions += 1;
             }
-            
+
             // Update timing statistics
             let duration_ms = duration.as_secs_f64() * 1000.0;
-            emission_stats.avg_emission_time_ms = 
-                (emission_stats.avg_emission_time_ms * (emission_stats.total_emissions - 1) as f64 + duration_ms) 
+            emission_stats.avg_emission_time_ms = (emission_stats.avg_emission_time_ms
+                * (emission_stats.total_emissions - 1) as f64
+                + duration_ms)
                 / emission_stats.total_emissions as f64;
-            
+
             if emission_stats.total_emissions == 1 || duration < emission_stats.min_emission_time {
                 emission_stats.min_emission_time = duration;
             }
             if duration > emission_stats.max_emission_time {
                 emission_stats.max_emission_time = duration;
             }
-            
+
             emission_stats.total_processing_time += duration;
             emission_stats.last_emission = Some(token.start_timestamp);
             emission_stats.handler_count = result.handlers_executed;
         }
-        
+
         // Update handler metrics
         {
             let mut handler_metrics = self.handler_metrics.write().unwrap();
             for handler_result in &result.handler_results {
-                let metrics = handler_metrics.entry(handler_result.handler_id.clone()).or_default();
-                
+                let metrics = handler_metrics
+                    .entry(handler_result.handler_id.clone())
+                    .or_default();
+
                 metrics.handler_id = handler_result.handler_id.clone();
                 metrics.event_type = result.event_type.clone();
                 metrics.priority = handler_result.priority.clone();
                 metrics.invocation_count += 1;
-                
+
                 if handler_result.success {
                     metrics.successful_executions += 1;
                 } else {
                     metrics.failed_executions += 1;
                 }
-                
+
                 // Update timing
                 let exec_time = handler_result.execution_time;
                 if metrics.invocation_count == 1 {
@@ -317,10 +320,12 @@ impl EventBusMetrics {
                     metrics.min_execution_time = exec_time;
                     metrics.max_execution_time = exec_time;
                 } else {
-                    let total_nanos = metrics.avg_execution_time.as_nanos() * (metrics.invocation_count - 1) as u128 
-                         + exec_time.as_nanos();
+                    let total_nanos = metrics.avg_execution_time.as_nanos()
+                        * (metrics.invocation_count - 1) as u128
+                        + exec_time.as_nanos();
                     let avg_nanos = total_nanos / metrics.invocation_count as u128;
-                    metrics.avg_execution_time = Duration::from_nanos(avg_nanos.min(u64::MAX as u128) as u64);
+                    metrics.avg_execution_time =
+                        Duration::from_nanos(avg_nanos.min(u64::MAX as u128) as u64);
                     if exec_time < metrics.min_execution_time {
                         metrics.min_execution_time = exec_time;
                     }
@@ -328,116 +333,117 @@ impl EventBusMetrics {
                         metrics.max_execution_time = exec_time;
                     }
                 }
-                
+
                 metrics.total_execution_time += exec_time;
                 metrics.last_execution = Some(token.start_timestamp);
             }
         }
-        
+
         // Update system metrics
         {
             let mut sys_metrics = self.system_metrics.lock().unwrap();
             sys_metrics.total_events_processed += 1;
             sys_metrics.uptime = sys_metrics.start_time.elapsed().unwrap_or(Duration::ZERO);
-            
+
             // Calculate events per second
             let uptime_secs = sys_metrics.uptime.as_secs_f64();
             if uptime_secs > 0.0 {
-                sys_metrics.events_per_second = sys_metrics.total_events_processed as f64 / uptime_secs;
+                sys_metrics.events_per_second =
+                    sys_metrics.total_events_processed as f64 / uptime_secs;
                 if sys_metrics.events_per_second > sys_metrics.peak_events_per_second {
                     sys_metrics.peak_events_per_second = sys_metrics.events_per_second;
                 }
             }
         }
     }
-    
+
     /// Records handler registration.
     pub fn record_handler_registration(&self, _handler_id: String) {
         if !self.enabled {
             return;
         }
-        
+
         let mut sys_metrics = self.system_metrics.lock().unwrap();
         sys_metrics.total_handlers_registered += 1;
     }
-    
+
     /// Records handler unregistration.
     pub fn record_handler_unregistration(&self, _handler_id: String) {
         if !self.enabled {
             return;
         }
-        
+
         let mut sys_metrics = self.system_metrics.lock().unwrap();
         if sys_metrics.total_handlers_registered > 0 {
             sys_metrics.total_handlers_registered -= 1;
         }
     }
-    
+
     /// Gets emission statistics for a specific event type.
     pub fn get_emission_stats(&self, event_type: TypeId) -> Option<EmissionStats> {
         if !self.enabled {
             return None;
         }
-        
+
         let stats = self.emission_stats.read().unwrap();
         stats.get(&event_type).cloned()
     }
-    
+
     /// Gets all emission statistics.
     pub fn get_all_emission_stats(&self) -> HashMap<TypeId, EmissionStats> {
         if !self.enabled {
             return HashMap::new();
         }
-        
+
         self.emission_stats.read().unwrap().clone()
     }
-    
+
     /// Gets handler metrics for a specific handler.
     pub fn get_handler_metrics(&self, handler_id: &str) -> Option<HandlerMetrics> {
         if !self.enabled {
             return None;
         }
-        
+
         let metrics = self.handler_metrics.read().unwrap();
         metrics.get(handler_id).cloned()
     }
-    
+
     /// Gets all handler metrics.
     pub fn get_all_handler_metrics(&self) -> HashMap<String, HandlerMetrics> {
         if !self.enabled {
             return HashMap::new();
         }
-        
+
         self.handler_metrics.read().unwrap().clone()
     }
-    
+
     /// Gets current system metrics.
     pub fn get_system_metrics(&self) -> SystemMetrics {
         if !self.enabled {
             return SystemMetrics::default();
         }
-        
+
         let mut sys_metrics = self.system_metrics.lock().unwrap();
         sys_metrics.uptime = sys_metrics.start_time.elapsed().unwrap_or(Duration::ZERO);
         sys_metrics.clone()
     }
-    
+
     /// Resets all metrics.
     pub fn reset(&self) {
         if !self.enabled {
             return;
         }
-        
+
         {
             let mut stats = self.emission_stats.write().unwrap();
             stats.clear();
         }
-        
+
         {
             let mut metrics = self.handler_metrics.write().unwrap();
             metrics.clear();
         }
-        
+
         {
             let mut sys_metrics = self.system_metrics.lock().unwrap();
             *sys_metrics = SystemMetrics {
@@ -447,7 +453,7 @@ impl EventBusMetrics {
             };
         }
     }
-    
+
     /// Generates a summary report of all metrics.
     pub fn generate_report(&self) -> MetricsReport {
         MetricsReport {
@@ -503,7 +509,7 @@ impl EmissionResult {
     ) -> Self {
         let handlers_succeeded = handler_results.iter().filter(|r| r.success).count();
         let handlers_failed = handlers_executed - handlers_succeeded;
-        
+
         Self {
             success: true,
             total_duration,
@@ -519,13 +525,9 @@ impl EmissionResult {
             middleware_metrics: None,
         }
     }
-    
+
     /// Creates a new failed EmissionResult.
-    pub fn failure(
-        total_duration: Duration,
-        error: String,
-        event_type: String,
-    ) -> Self {
+    pub fn failure(total_duration: Duration, error: String, event_type: String) -> Self {
         Self {
             success: false,
             total_duration,
@@ -541,7 +543,7 @@ impl EmissionResult {
             middleware_metrics: None,
         }
     }
-    
+
     /// Returns the success rate of handler executions.
     pub fn success_rate(&self) -> f64 {
         if self.handlers_executed == 0 {
@@ -549,29 +551,26 @@ impl EmissionResult {
         }
         self.handlers_succeeded as f64 / self.handlers_executed as f64
     }
-    
+
     /// Returns the average handler execution time.
     pub fn avg_handler_execution_time(&self) -> Duration {
         if self.handler_results.is_empty() {
             return Duration::ZERO;
         }
-        
-        let total_nanos: u128 = self.handler_results
+
+        let total_nanos: u128 = self
+            .handler_results
             .iter()
             .map(|r| r.execution_time.as_nanos())
             .sum();
-        
+
         Duration::from_nanos((total_nanos / self.handler_results.len() as u128) as u64)
     }
 }
 
 impl HandlerResult {
     /// Creates a new successful HandlerResult.
-    pub fn success(
-        handler_id: String,
-        execution_time: Duration,
-        priority: String,
-    ) -> Self {
+    pub fn success(handler_id: String, execution_time: Duration, priority: String) -> Self {
         Self {
             handler_id,
             success: true,
@@ -581,7 +580,7 @@ impl HandlerResult {
             skipped_by_filter: false,
         }
     }
-    
+
     /// Creates a new failed HandlerResult.
     pub fn failure(
         handler_id: String,
@@ -598,12 +597,9 @@ impl HandlerResult {
             skipped_by_filter: false,
         }
     }
-    
+
     /// Creates a new HandlerResult for a handler skipped by filtering.
-    pub fn skipped(
-        handler_id: String,
-        priority: String,
-    ) -> Self {
+    pub fn skipped(handler_id: String, priority: String) -> Self {
         Self {
             handler_id,
             success: true,

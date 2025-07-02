@@ -19,14 +19,14 @@
 //! }
 //! ```
 
-use crate::event::Event;
 use crate::error::MiddlewareResult;
-use std::collections::HashMap;
+use crate::event::Event;
 use std::any::Any;
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Trait for middleware components that can intercept and process events.
-/// 
+///
 /// Middleware components are executed in the order they were registered,
 /// forming a chain of responsibility pattern. Each middleware can:
 /// - Inspect and modify the event
@@ -35,26 +35,26 @@ use std::time::{Duration, Instant};
 /// - Perform cross-cutting concerns like logging, metrics, validation
 pub trait Middleware<E: Event>: Send + Sync + 'static {
     /// Handles the event and middleware chain.
-    /// 
+    ///
     /// # Arguments
     /// * `event` - The event being processed
     /// * `context` - Middleware context for continuing the chain
-    /// 
+    ///
     /// # Returns
     /// Returns `Ok(())` if processing should continue, or an error to halt processing.
     fn handle(&self, event: &E, context: &mut MiddlewareContext<E>) -> MiddlewareResult;
-    
+
     /// Returns the name of this middleware for debugging and logging.
     fn middleware_name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }
-    
+
     /// Called when the middleware is first registered.
     /// Override this to perform initialization.
     fn on_register(&self) -> MiddlewareResult {
         Ok(())
     }
-    
+
     /// Called when the middleware is unregistered or the bus is shut down.
     /// Override this to perform cleanup.
     fn on_unregister(&self) -> MiddlewareResult {
@@ -63,7 +63,7 @@ pub trait Middleware<E: Event>: Send + Sync + 'static {
 }
 
 /// Context passed to middleware for chain continuation and metadata sharing.
-/// 
+///
 /// The MiddlewareContext provides:
 /// - Chain continuation via `next()`
 /// - Metadata storage for cross-middleware communication
@@ -112,30 +112,30 @@ impl<E: Event> MiddlewareContext<E> {
             next_fn: None,
         }
     }
-    
+
     /// Sets the next function to be called when `next()` is invoked.
-    pub fn set_next_fn<F>(&mut self, next_fn: F) 
-    where 
-        F: FnOnce(&E) -> MiddlewareResult + Send + 'static
+    pub fn set_next_fn<F>(&mut self, next_fn: F)
+    where
+        F: FnOnce(&E) -> MiddlewareResult + Send + 'static,
     {
         self.next_fn = Some(Box::new(next_fn));
     }
-    
+
     /// Continues processing the event through the next middleware or handlers.
-    /// 
+    ///
     /// This method should be called by middleware that want to continue the chain.
     /// If not called, the chain will be short-circuited.
-    /// 
+    ///
     /// # Arguments
     /// * `event` - The event to continue processing
-    /// 
+    ///
     /// # Returns
     /// Returns the result of the remaining middleware chain.
     pub fn next(&mut self, event: &E) -> MiddlewareResult {
         if self.short_circuited {
             return Ok(()); // Already short-circuited
         }
-        
+
         if let Some(next_fn) = self.next_fn.take() {
             next_fn(event)
         } else {
@@ -143,61 +143,60 @@ impl<E: Event> MiddlewareContext<E> {
             Ok(())
         }
     }
-    
+
     /// Stores metadata that can be shared between middleware components.
-    /// 
+    ///
     /// # Arguments
     /// * `key` - The metadata key
     /// * `value` - The metadata value
     pub fn set_metadata<T: Any + Send + Sync>(&mut self, key: String, value: T) {
         self.metadata.insert(key, Box::new(value));
     }
-    
+
     /// Retrieves metadata stored by previous middleware.
-    /// 
+    ///
     /// # Arguments
     /// * `key` - The metadata key
-    /// 
+    ///
     /// # Returns
     /// Returns a reference to the metadata value if found and of the correct type.
     pub fn get_metadata<T: Any + Send + Sync>(&self, key: &str) -> Option<&T> {
-        self.metadata.get(key)?
-            .downcast_ref::<T>()
+        self.metadata.get(key)?.downcast_ref::<T>()
     }
-    
+
     /// Short-circuits the middleware chain, preventing further processing.
-    /// 
+    ///
     /// This can be used by middleware that want to halt processing,
     /// such as validation middleware that detects invalid events.
     pub fn short_circuit(&mut self) {
         self.short_circuited = true;
     }
-    
+
     /// Returns whether the chain has been short-circuited.
     pub fn is_short_circuited(&self) -> bool {
         self.short_circuited
     }
-    
+
     /// Returns the total time elapsed since context creation.
     pub fn total_elapsed(&self) -> Duration {
         self.start_time.elapsed()
     }
-    
+
     /// Returns execution metrics for all middleware that have been executed.
     pub fn execution_metrics(&self) -> &[MiddlewareMetrics] {
         &self.execution_metrics
     }
-    
+
     /// Returns the current position in the middleware chain.
     pub fn current_position(&self) -> usize {
         self.current_index
     }
-    
+
     /// Returns the total number of middleware in the chain.
     pub fn chain_length(&self) -> usize {
         self.chain_length
     }
-    
+
     /// Records metrics for middleware execution.
     pub fn record_metrics(&mut self, metrics: MiddlewareMetrics) {
         self.execution_metrics.push(metrics);
@@ -205,7 +204,7 @@ impl<E: Event> MiddlewareContext<E> {
 }
 
 /// A middleware chain executor that manages the execution of multiple middleware components.
-/// 
+///
 /// The MiddlewareChain provides a way to compose multiple middleware components
 /// and execute them in sequence for each event.
 pub struct MiddlewareChain<E: Event> {
@@ -219,9 +218,9 @@ impl<E: Event> MiddlewareChain<E> {
             middleware: Vec::new(),
         }
     }
-    
+
     /// Adds middleware to the end of the chain.
-    /// 
+    ///
     /// # Arguments
     /// * `middleware` - The middleware component to add
     pub fn add<M: Middleware<E>>(&mut self, middleware: M) -> MiddlewareResult {
@@ -229,35 +228,35 @@ impl<E: Event> MiddlewareChain<E> {
         self.middleware.push(Box::new(middleware));
         Ok(())
     }
-    
+
     /// Executes the middleware chain for the given event.
-    /// 
+    ///
     /// # Arguments
     /// * `event` - The event to process through the chain
-    /// 
+    ///
     /// # Returns
     /// Returns the result of the middleware chain execution.
     pub fn execute(&self, event: &E) -> MiddlewareResult {
         if self.middleware.is_empty() {
             return Ok(());
         }
-        
+
         self.execute_recursive(event, 0)
     }
-    
+
     /// Recursively executes middleware in the chain.
     fn execute_recursive(&self, event: &E, index: usize) -> MiddlewareResult {
         if index >= self.middleware.len() {
             return Ok(());
         }
-        
+
         let middleware = &self.middleware[index];
         let middleware_start = Instant::now();
         let middleware_name = middleware.middleware_name().to_string();
-        
+
         let mut context = MiddlewareContext::new(self.middleware.len());
         context.current_index = index;
-        
+
         // Set up the next function for recursive call
         let next_index = index + 1;
         if next_index < self.middleware.len() {
@@ -267,9 +266,9 @@ impl<E: Event> MiddlewareChain<E> {
                 Ok(())
             });
         }
-        
+
         let result = middleware.handle(event, &mut context);
-        
+
         // Record metrics (not used yet, but structure for future implementation)
         let execution_time = middleware_start.elapsed();
         let _metrics = MiddlewareMetrics {
@@ -278,27 +277,27 @@ impl<E: Event> MiddlewareChain<E> {
             called_next: !context.is_short_circuited(),
             error: result.as_ref().err().map(|e| e.to_string()),
         };
-        
+
         result?;
-        
+
         if context.is_short_circuited() {
             return Ok(());
         }
-        
+
         // Continue to next middleware
         self.execute_recursive(event, index + 1)
     }
-    
+
     /// Returns the number of middleware components in the chain.
     pub fn len(&self) -> usize {
         self.middleware.len()
     }
-    
+
     /// Returns whether the chain is empty.
     pub fn is_empty(&self) -> bool {
         self.middleware.is_empty()
     }
-    
+
     /// Clears all middleware from the chain.
     pub fn clear(&mut self) {
         for middleware in &self.middleware {
@@ -330,7 +329,7 @@ impl LoggingMiddleware {
     pub fn new(prefix: String) -> Self {
         Self { prefix }
     }
-    
+
     /// Creates a new logging middleware with a default prefix.
     pub fn default() -> Self {
         Self::new("EventRS".to_string())
@@ -342,7 +341,7 @@ impl<E: Event> Middleware<E> for LoggingMiddleware {
         println!("{}: Processing event {}", self.prefix, E::event_type_name());
         context.next(event)
     }
-    
+
     fn middleware_name(&self) -> &'static str {
         "LoggingMiddleware"
     }
@@ -364,7 +363,7 @@ impl<E: Event> Middleware<E> for ValidationMiddleware {
         event.validate()?;
         context.next(event)
     }
-    
+
     fn middleware_name(&self) -> &'static str {
         "ValidationMiddleware"
     }
@@ -386,7 +385,7 @@ impl MetricsMiddleware {
     pub fn new(name: String) -> Self {
         Self { name }
     }
-    
+
     /// Creates a new metrics middleware with a default name.
     pub fn default() -> Self {
         Self::new("default".to_string())
@@ -397,18 +396,22 @@ impl<E: Event> Middleware<E> for MetricsMiddleware {
     fn handle(&self, event: &E, context: &mut MiddlewareContext<E>) -> MiddlewareResult {
         let start_time = Instant::now();
         context.set_metadata("metrics_start".to_string(), start_time);
-        
+
         let result = context.next(event);
-        
+
         let end_time = Instant::now();
         let duration = end_time.duration_since(start_time);
-        
-        println!("{}: Event {} processed in {:?}", 
-                 self.name, E::event_type_name(), duration);
-        
+
+        println!(
+            "{}: Event {} processed in {:?}",
+            self.name,
+            E::event_type_name(),
+            duration
+        );
+
         result
     }
-    
+
     fn middleware_name(&self) -> &'static str {
         "MetricsMiddleware"
     }

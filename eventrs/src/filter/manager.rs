@@ -5,12 +5,12 @@
 //! dynamic filter management, and performance optimizations like caching.
 
 use crate::filter::any::{AnyEvent, BoxedAnyFilter};
-use std::sync::{Arc, RwLock};
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
 use std::any::TypeId;
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 /// Manages a collection of filters for an event bus.
 ///
@@ -93,7 +93,12 @@ impl FilterManager {
     }
 
     /// Adds a filter to the manager with the given ID and priority.
-    pub fn add_filter_with_priority<S: Into<String>>(&self, id: S, filter: BoxedAnyFilter, priority: i32) {
+    pub fn add_filter_with_priority<S: Into<String>>(
+        &self,
+        id: S,
+        filter: BoxedAnyFilter,
+        priority: i32,
+    ) {
         let mut filters = self.filters.write().unwrap();
         let entry = FilterEntry {
             id: id.into(),
@@ -136,7 +141,8 @@ impl FilterManager {
     /// Returns whether a filter with the given ID exists and is enabled.
     pub fn is_filter_enabled(&self, id: &str) -> bool {
         let filters = self.filters.read().unwrap();
-        filters.iter()
+        filters
+            .iter()
             .find(|entry| entry.id == id)
             .map(|entry| entry.enabled)
             .unwrap_or(false)
@@ -180,7 +186,9 @@ impl FilterManager {
     /// Returns the total number of filters including parent hierarchy.
     pub fn total_filter_count(&self) -> usize {
         let local_count = self.filter_count();
-        let parent_count = self.parent.as_ref()
+        let parent_count = self
+            .parent
+            .as_ref()
             .map(|p| p.total_filter_count())
             .unwrap_or(0);
         local_count + parent_count
@@ -218,7 +226,7 @@ impl FilterManager {
 
     fn evaluate_local_filters(&self, event: &dyn AnyEvent) -> bool {
         let filters = self.filters.read().unwrap();
-        
+
         for entry in filters.iter() {
             if !entry.enabled {
                 continue;
@@ -228,7 +236,7 @@ impl FilterManager {
             let result = if entry.filter.is_cacheable() {
                 // Use caching for cacheable filters
                 let cache_key = format!("{}-{}", entry.id, entry.filter.cache_key(event));
-                
+
                 if let Some(cached) = self.check_cache(&cache_key) {
                     cached
                 } else {
@@ -240,12 +248,12 @@ impl FilterManager {
                 // No caching for non-cacheable filters
                 entry.filter.evaluate(event)
             };
-            
+
             if !result {
                 return false;
             }
         }
-        
+
         true
     }
 
@@ -267,13 +275,16 @@ impl FilterManager {
         let mut hasher = DefaultHasher::new();
         event_type_id.hash(&mut hasher);
         let event_hash = hasher.finish();
-        
-        cache.insert(key, CacheEntry {
-            result,
-            timestamp: Instant::now(),
-            event_hash,
-        });
-        
+
+        cache.insert(
+            key,
+            CacheEntry {
+                result,
+                timestamp: Instant::now(),
+                event_hash,
+            },
+        );
+
         // Clean up old entries if cache gets too large
         if cache.len() > 1000 {
             let now = Instant::now();
@@ -330,7 +341,7 @@ impl FilterManagerBuilder {
         } else {
             FilterManager::with_cache_ttl(self.cache_ttl)
         };
-        
+
         manager.set_enabled(self.enabled);
         manager
     }

@@ -48,13 +48,13 @@
 #![allow(clippy::module_inception)]
 
 // Re-export derive macros
-pub use eventrs_derive::{Event, AsyncEvent};
+pub use eventrs_derive::{AsyncEvent, Event};
 
 // Core modules
-pub mod event;
-pub mod handler;
-pub mod event_bus;
 pub mod error;
+pub mod event;
+pub mod event_bus;
+pub mod handler;
 pub mod metadata;
 pub mod priority;
 
@@ -64,8 +64,8 @@ pub mod async_event_bus;
 
 pub mod filter;
 pub mod middleware;
-pub mod thread_safe;
 pub mod testing;
+pub mod thread_safe;
 
 #[cfg(feature = "metrics")]
 pub mod metrics;
@@ -74,57 +74,71 @@ pub mod metrics;
 pub mod tracing;
 
 // Re-exports for convenience
-pub use event::{Event, AsyncEventMarker};
-pub use handler::{Handler, HandlerId, FallibleHandler};
+pub use event::{AsyncEventMarker, Event};
+pub use handler::{FallibleHandler, Handler, HandlerId};
 
+pub use error::*;
+pub use event_bus::{ErrorHandling, EventBus, EventBusBuilder, EventBusConfig};
 #[cfg(feature = "async")]
 pub use handler::{AsyncHandler, FallibleAsyncHandler};
-pub use event_bus::{EventBus, EventBusConfig, EventBusBuilder, ErrorHandling};
-pub use error::*;
 pub use metadata::{
-    EventMetadata, SecurityLevel, EventTimestamps, EventSignature, EventSource, 
-    SourceType, EventProvenance, EventTransformation
+    EventMetadata, EventProvenance, EventSignature, EventSource, EventTimestamps,
+    EventTransformation, SecurityLevel, SourceType,
 };
-pub use priority::{Priority, PriorityValue, PriorityOrdered, HandlerGroup, PriorityChain};
+pub use priority::{HandlerGroup, Priority, PriorityChain, PriorityOrdered, PriorityValue};
 
 #[cfg(feature = "async")]
-pub use async_event_bus::{AsyncEventBus, AsyncEventBusConfig, AsyncEventBusBuilder};
+pub use async_event_bus::{AsyncEventBus, AsyncEventBusBuilder, AsyncEventBusConfig};
 
 pub use filter::{
-    Filter, PredicateFilter, AllowAllFilter, RejectAllFilter,
-    AndFilter, OrFilter, NotFilter, FilterChain, ChainMode,
-    BoxedFilter, SharedFilter, FilterManager, FilterManagerBuilder,
-    AnyEvent, AnyEventFilter, BoxedAnyFilter, SharedAnyFilter, PredicateAnyFilter,
-    AllowAllAnyFilter, RejectAllAnyFilter, EventTypeFilter, EventTypeFilterMode,
-    CacheableEvent, DynamicFilter, ContentAwareCacheFilter, compute_hash
+    compute_hash, AllowAllAnyFilter, AllowAllFilter, AndFilter, AnyEvent, AnyEventFilter,
+    BoxedAnyFilter, BoxedFilter, CacheableEvent, ChainMode, ContentAwareCacheFilter, DynamicFilter,
+    EventTypeFilter, EventTypeFilterMode, Filter, FilterChain, FilterManager, FilterManagerBuilder,
+    NotFilter, OrFilter, PredicateAnyFilter, PredicateFilter, RejectAllAnyFilter, RejectAllFilter,
+    SharedAnyFilter, SharedFilter,
 };
-pub use middleware::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareMetrics, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
-pub use thread_safe::{ThreadSafeEventBus, ThreadSafeEventBusConfig, EventSender, EventSenderError, MultiEventSender};
-pub use testing::{TestEventBus, TestEventBusConfig, MockHandler, EventSpy};
+pub use middleware::{
+    LoggingMiddleware, MetricsMiddleware, Middleware, MiddlewareChain, MiddlewareContext,
+    MiddlewareMetrics, ValidationMiddleware,
+};
+pub use testing::{EventSpy, MockHandler, TestEventBus, TestEventBusConfig};
+pub use thread_safe::{
+    EventSender, EventSenderError, MultiEventSender, ThreadSafeEventBus, ThreadSafeEventBusConfig,
+};
 
+pub use error::MiddlewareResult;
 #[cfg(feature = "metrics")]
 pub use metrics::{
-    EventBusMetrics, EmissionResult, HandlerResult, EmissionStats, HandlerMetrics, 
-    SystemMetrics, MetricsReport, EmissionToken, MiddlewareExecutionMetric
+    EmissionResult, EmissionStats, EmissionToken, EventBusMetrics, HandlerMetrics, HandlerResult,
+    MetricsReport, MiddlewareExecutionMetric, SystemMetrics,
 };
-pub use error::MiddlewareResult;
 
 /// Prelude module for convenient imports
 pub mod prelude {
-    pub use crate::{Event, AsyncEvent, AsyncEventMarker, EventBus, EventBusBuilder, Handler, HandlerId};
-    pub use crate::{EventMetadata, SecurityLevel, EventSource, SourceType, Priority, PriorityValue, HandlerGroup, PriorityChain, ErrorHandling};
-    pub use crate::error::{EventBusError, HandlerError, EventValidationError};
-    
+    pub use crate::error::{EventBusError, EventValidationError, HandlerError};
+    pub use crate::{
+        AsyncEvent, AsyncEventMarker, Event, EventBus, EventBusBuilder, Handler, HandlerId,
+    };
+    pub use crate::{
+        ErrorHandling, EventMetadata, EventSource, HandlerGroup, Priority, PriorityChain,
+        PriorityValue, SecurityLevel, SourceType,
+    };
+
     #[cfg(feature = "async")]
-    pub use crate::{AsyncEventBus, AsyncEventBusConfig, AsyncEventBusBuilder};
-    
-    pub use crate::{Filter, PredicateFilter, FilterChain, ChainMode};
-    pub use crate::{Middleware, MiddlewareContext, MiddlewareChain, MiddlewareResult, LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
+    pub use crate::{AsyncEventBus, AsyncEventBusBuilder, AsyncEventBusConfig};
+
+    pub use crate::{ChainMode, Filter, FilterChain, PredicateFilter};
+    pub use crate::{EventSpy, MockHandler, TestEventBus, TestEventBusConfig};
+    pub use crate::{
+        LoggingMiddleware, MetricsMiddleware, Middleware, MiddlewareChain, MiddlewareContext,
+        MiddlewareResult, ValidationMiddleware,
+    };
     pub use crate::{ThreadSafeEventBus, ThreadSafeEventBusConfig};
-    pub use crate::{TestEventBus, TestEventBusConfig, MockHandler, EventSpy};
-    
+
     #[cfg(feature = "metrics")]
-    pub use crate::{EventBusMetrics, EmissionResult, HandlerResult, EmissionStats, HandlerMetrics};
+    pub use crate::{
+        EmissionResult, EmissionStats, EventBusMetrics, HandlerMetrics, HandlerResult,
+    };
 }
 
 /// Version information for the EventRS library.
@@ -156,7 +170,7 @@ mod tests {
     struct TestEvent {
         value: u32,
     }
-    
+
     impl Event for TestEvent {}
 
     #[test]

@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{Event, Middleware, MiddlewareContext, MiddlewareResult, MiddlewareChain};
-    use crate::{LoggingMiddleware, ValidationMiddleware, MetricsMiddleware};
+    use crate::{Event, Middleware, MiddlewareChain, MiddlewareContext, MiddlewareResult};
+    use crate::{LoggingMiddleware, MetricsMiddleware, ValidationMiddleware};
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Debug)]
@@ -34,7 +34,7 @@ mod tests {
             *count += 1;
             context.next(event)
         }
-        
+
         fn middleware_name(&self) -> &'static str {
             "CountingMiddleware"
         }
@@ -47,7 +47,7 @@ mod tests {
             context.short_circuit();
             Ok(())
         }
-        
+
         fn middleware_name(&self) -> &'static str {
             "ShortCircuitMiddleware"
         }
@@ -74,7 +74,7 @@ mod tests {
         let _logging = LoggingMiddleware::new("Test".to_string());
         let _validation = ValidationMiddleware::new();
         let _metrics = MetricsMiddleware::new("TestMetrics".to_string());
-        
+
         // Test default implementations
         let _logging_default = LoggingMiddleware::default();
         let _validation_default = ValidationMiddleware::default();
@@ -84,16 +84,16 @@ mod tests {
     #[test]
     fn test_middleware_context_metadata() {
         let mut context: MiddlewareContext<TestEvent> = MiddlewareContext::new(1);
-        
+
         // Test metadata storage and retrieval
         context.set_metadata("test_key".to_string(), 42i32);
         let value = context.get_metadata::<i32>("test_key");
         assert_eq!(value, Some(&42));
-        
+
         // Test wrong type
         let wrong_type = context.get_metadata::<String>("test_key");
         assert_eq!(wrong_type, None);
-        
+
         // Test missing key
         let missing = context.get_metadata::<i32>("missing_key");
         assert_eq!(missing, None);
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn test_middleware_context_short_circuit() {
         let mut context: MiddlewareContext<TestEvent> = MiddlewareContext::new(1);
-        
+
         assert!(!context.is_short_circuited());
         context.short_circuit();
         assert!(context.is_short_circuited());
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn test_middleware_context_chain_info() {
         let context: MiddlewareContext<TestEvent> = MiddlewareContext::new(5);
-        
+
         assert_eq!(context.current_position(), 0);
         assert_eq!(context.chain_length(), 5);
         assert!(context.execution_metrics().is_empty());
@@ -120,8 +120,11 @@ mod tests {
     #[test]
     fn test_middleware_next_when_short_circuited() {
         let mut context: MiddlewareContext<TestEvent> = MiddlewareContext::new(1);
-        let event = TestEvent { value: 42, name: "test".to_string() };
-        
+        let event = TestEvent {
+            value: 42,
+            name: "test".to_string(),
+        };
+
         context.short_circuit();
         let result = context.next(&event);
         assert!(result.is_ok()); // Should return Ok but not continue processing

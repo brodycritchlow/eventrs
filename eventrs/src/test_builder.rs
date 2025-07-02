@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{EventBus, Priority, ErrorHandling};
+    use crate::{ErrorHandling, EventBus, Priority};
 
     #[test]
     fn test_event_bus_builder() {
@@ -28,7 +28,7 @@ mod tests {
     fn test_event_bus_builder_defaults() {
         let bus = EventBus::builder().build();
         let config = bus.config();
-        
+
         // Check default values
         assert_eq!(config.initial_capacity, 64);
         assert_eq!(config.enable_metrics, false);

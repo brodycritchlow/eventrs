@@ -2,12 +2,12 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{Event, ThreadSafeEventBus, ThreadSafeEventBusConfig, Priority, ErrorHandling};
     use crate::filter::PredicateFilter;
+    use crate::{ErrorHandling, Event, Priority, ThreadSafeEventBus, ThreadSafeEventBusConfig};
+    use std::fmt;
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
-    use std::fmt;
 
     #[derive(Debug)]
     struct TestError(String);
@@ -48,30 +48,33 @@ mod tests {
         let bus = ThreadSafeEventBus::new();
         assert_eq!(bus.total_handler_count(), 0);
         assert!(!bus.is_processing());
-        
+
         let config = ThreadSafeEventBusConfig {
             max_handlers_per_event: Some(50),
             use_priority_ordering: true,
             default_handler_priority: Priority::High,
             ..Default::default()
         };
-        
+
         let bus_with_config = ThreadSafeEventBus::with_config(config);
         assert_eq!(bus_with_config.config().max_handlers_per_event, Some(50));
-        assert_eq!(bus_with_config.config().default_handler_priority, Priority::High);
+        assert_eq!(
+            bus_with_config.config().default_handler_priority,
+            Priority::High
+        );
     }
 
     #[test]
     fn test_thread_safe_handler_registration() {
         let bus = ThreadSafeEventBus::new();
-        
+
         let handler_id = bus.on(|event: TestEvent| {
             println!("Received: {}", event.value);
         });
-        
+
         assert_eq!(bus.total_handler_count(), 1);
         assert!(handler_id.value() > 0);
-        
+
         // Test handler unregistration
         let removed = bus.off(handler_id);
         assert!(removed);
@@ -82,20 +85,20 @@ mod tests {
     fn test_thread_safe_event_emission() {
         let bus = ThreadSafeEventBus::new();
         let counter = Arc::new(Mutex::new(0));
-        
+
         let counter_clone = Arc::clone(&counter);
         bus.on(move |event: TestEvent| {
             let mut count = counter_clone.lock().unwrap();
             *count += event.value;
         });
-        
+
         // Emit event
         let result = bus.emit(TestEvent {
             value: 42,
             message: "test".to_string(),
         });
         assert!(result.is_ok());
-        
+
         // Check that handler was executed
         let final_count = *counter.lock().unwrap();
         assert_eq!(final_count, 42);
@@ -105,7 +108,7 @@ mod tests {
     fn test_cross_thread_usage() {
         let bus = Arc::new(ThreadSafeEventBus::new());
         let counter = Arc::new(Mutex::new(0));
-        
+
         // Register handler in main thread
         let counter_clone = Arc::clone(&counter);
         bus.on(move |event: CounterEvent| {
@@ -113,23 +116,25 @@ mod tests {
             *count += 1;
             println!("Processed event with id: {}", event.id);
         });
-        
+
         // Emit events from multiple threads
-        let handles: Vec<_> = (0..5).map(|i| {
-            let bus_clone = Arc::clone(&bus);
-            thread::spawn(move || {
-                bus_clone.emit(CounterEvent { id: i }).unwrap();
+        let handles: Vec<_> = (0..5)
+            .map(|i| {
+                let bus_clone = Arc::clone(&bus);
+                thread::spawn(move || {
+                    bus_clone.emit(CounterEvent { id: i }).unwrap();
+                })
             })
-        }).collect();
-        
+            .collect();
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         // Give handlers time to execute
         thread::sleep(Duration::from_millis(10));
-        
+
         // Check that all events were processed
         let final_count = *counter.lock().unwrap();
         assert_eq!(final_count, 5);
@@ -139,29 +144,39 @@ mod tests {
     fn test_thread_safe_priority_ordering() {
         let bus = ThreadSafeEventBus::new();
         let execution_order = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handlers with different priorities
         let order_clone1 = Arc::clone(&execution_order);
-        bus.on_with_priority(move |_event: TestEvent| {
-            order_clone1.lock().unwrap().push(1);
-        }, Priority::Low);
-        
+        bus.on_with_priority(
+            move |_event: TestEvent| {
+                order_clone1.lock().unwrap().push(1);
+            },
+            Priority::Low,
+        );
+
         let order_clone2 = Arc::clone(&execution_order);
-        bus.on_with_priority(move |_event: TestEvent| {
-            order_clone2.lock().unwrap().push(2);
-        }, Priority::High);
-        
+        bus.on_with_priority(
+            move |_event: TestEvent| {
+                order_clone2.lock().unwrap().push(2);
+            },
+            Priority::High,
+        );
+
         let order_clone3 = Arc::clone(&execution_order);
-        bus.on_with_priority(move |_event: TestEvent| {
-            order_clone3.lock().unwrap().push(3);
-        }, Priority::Critical);
-        
+        bus.on_with_priority(
+            move |_event: TestEvent| {
+                order_clone3.lock().unwrap().push(3);
+            },
+            Priority::Critical,
+        );
+
         // Emit event
         bus.emit(TestEvent {
             value: 1,
             message: "priority test".to_string(),
-        }).unwrap();
-        
+        })
+        .unwrap();
+
         // Check execution order (Critical > High > Low)
         let order = execution_order.lock().unwrap();
         assert_eq!(*order, vec![3, 2, 1]);
@@ -171,23 +186,27 @@ mod tests {
     fn test_thread_safe_filtering() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Create filter that only allows even values
         let filter = PredicateFilter::new("even_values", |event: &TestEvent| event.value % 2 == 0);
-        
+
         let events_clone = Arc::clone(&processed_events);
-        bus.on_with_filter(move |event: TestEvent| {
-            events_clone.lock().unwrap().push(event.value);
-        }, Arc::new(filter));
-        
+        bus.on_with_filter(
+            move |event: TestEvent| {
+                events_clone.lock().unwrap().push(event.value);
+            },
+            Arc::new(filter),
+        );
+
         // Emit both even and odd events
         for i in 1..=5 {
             bus.emit(TestEvent {
                 value: i,
                 message: format!("event {}", i),
-            }).unwrap();
+            })
+            .unwrap();
         }
-        
+
         // Only even values should have been processed
         let processed = processed_events.lock().unwrap();
         assert_eq!(*processed, vec![2, 4]);
@@ -197,7 +216,7 @@ mod tests {
     fn test_thread_safe_fallible_handlers() {
         let bus = ThreadSafeEventBus::new();
         let success_count = Arc::new(Mutex::new(0));
-        
+
         let count_clone = Arc::clone(&success_count);
         bus.on_fallible(move |event: TestEvent| -> Result<(), TestError> {
             if event.value > 0 {
@@ -208,19 +227,21 @@ mod tests {
                 Err(TestError("Negative value not allowed".to_string()))
             }
         });
-        
+
         // Emit successful event
         bus.emit(TestEvent {
             value: 10,
             message: "success".to_string(),
-        }).unwrap();
-        
+        })
+        .unwrap();
+
         // Emit failing event (should not crash due to continue_on_handler_failure)
         bus.emit(TestEvent {
             value: -1,
             message: "failure".to_string(),
-        }).unwrap();
-        
+        })
+        .unwrap();
+
         let final_count = *success_count.lock().unwrap();
         assert_eq!(final_count, 1);
     }
@@ -228,13 +249,13 @@ mod tests {
     #[test]
     fn test_thread_safe_clear_handlers() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Register multiple handlers
         bus.on(|_event: TestEvent| {});
         bus.on(|_event: CounterEvent| {});
-        
+
         assert_eq!(bus.total_handler_count(), 2);
-        
+
         // Clear all handlers
         bus.clear();
         assert_eq!(bus.total_handler_count(), 0);
@@ -243,13 +264,13 @@ mod tests {
     #[test]
     fn test_thread_safe_shutdown() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Register handler
         bus.on(|_event: TestEvent| {});
-        
+
         // Shutdown bus
         bus.shutdown().unwrap();
-        
+
         // Events should be rejected after shutdown
         let result = bus.emit(TestEvent {
             value: 1,
@@ -262,27 +283,28 @@ mod tests {
     fn test_thread_safe_clone() {
         let bus1 = ThreadSafeEventBus::new();
         let counter = Arc::new(Mutex::new(0));
-        
+
         // Register handler on original bus
         let counter_clone = Arc::clone(&counter);
         bus1.on(move |event: TestEvent| {
             let mut count = counter_clone.lock().unwrap();
             *count += event.value;
         });
-        
+
         // Clone the bus
         let bus2 = bus1.clone();
-        
+
         // Both buses should share the same handlers
         assert_eq!(bus1.total_handler_count(), 1);
         assert_eq!(bus2.total_handler_count(), 1);
-        
+
         // Emit from cloned bus
         bus2.emit(TestEvent {
             value: 5,
             message: "from clone".to_string(),
-        }).unwrap();
-        
+        })
+        .unwrap();
+
         // Handler should have been executed
         let final_count = *counter.lock().unwrap();
         assert_eq!(final_count, 5);
@@ -292,45 +314,51 @@ mod tests {
     fn test_concurrent_registration_and_emission() {
         let bus = Arc::new(ThreadSafeEventBus::new());
         let processed_count = Arc::new(Mutex::new(0));
-        
+
         // Spawn threads that register handlers
-        let registration_handles: Vec<_> = (0..3).map(|i| {
-            let bus_clone = Arc::clone(&bus);
-            let count_clone = Arc::clone(&processed_count);
-            thread::spawn(move || {
-                bus_clone.on(move |event: TestEvent| {
-                    if event.value == i {
-                        let mut count = count_clone.lock().unwrap();
-                        *count += 1;
-                    }
-                });
+        let registration_handles: Vec<_> = (0..3)
+            .map(|i| {
+                let bus_clone = Arc::clone(&bus);
+                let count_clone = Arc::clone(&processed_count);
+                thread::spawn(move || {
+                    bus_clone.on(move |event: TestEvent| {
+                        if event.value == i {
+                            let mut count = count_clone.lock().unwrap();
+                            *count += 1;
+                        }
+                    });
+                })
             })
-        }).collect();
-        
+            .collect();
+
         // Wait for registration threads
         for handle in registration_handles {
             handle.join().unwrap();
         }
-        
+
         // Spawn threads that emit events
-        let emission_handles: Vec<_> = (0..3).map(|i| {
-            let bus_clone = Arc::clone(&bus);
-            thread::spawn(move || {
-                bus_clone.emit(TestEvent {
-                    value: i,
-                    message: format!("concurrent {}", i),
-                }).unwrap();
+        let emission_handles: Vec<_> = (0..3)
+            .map(|i| {
+                let bus_clone = Arc::clone(&bus);
+                thread::spawn(move || {
+                    bus_clone
+                        .emit(TestEvent {
+                            value: i,
+                            message: format!("concurrent {}", i),
+                        })
+                        .unwrap();
+                })
             })
-        }).collect();
-        
+            .collect();
+
         // Wait for emission threads
         for handle in emission_handles {
             handle.join().unwrap();
         }
-        
+
         // Give handlers time to execute
         thread::sleep(Duration::from_millis(10));
-        
+
         // Each handler should have processed exactly one matching event
         let final_count = *processed_count.lock().unwrap();
         assert_eq!(final_count, 3);
@@ -343,9 +371,9 @@ mod tests {
             detailed_error_reporting: true,
             ..Default::default()
         };
-        
+
         let bus = ThreadSafeEventBus::with_config(config);
-        
+
         // Register a failing handler
         bus.on_fallible(|event: TestEvent| -> Result<(), TestError> {
             if event.value < 0 {
@@ -354,14 +382,14 @@ mod tests {
                 Ok(())
             }
         });
-        
+
         // Emit successful event
         let result1 = bus.emit(TestEvent {
             value: 5,
             message: "success".to_string(),
         });
         assert!(result1.is_ok());
-        
+
         // Emit failing event - should return error due to StopOnFirstError
         let result2 = bus.emit(TestEvent {
             value: -1,
@@ -376,30 +404,34 @@ mod tests {
     fn test_event_sender() {
         let bus = Arc::new(ThreadSafeEventBus::new());
         let received_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&received_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create EventSender
         let sender = bus.create_sender::<TestEvent>(100).unwrap();
-        
+
         // Send events
-        sender.send(TestEvent {
-            value: 1,
-            message: "first".to_string(),
-        }).unwrap();
-        
-        sender.send(TestEvent {
-            value: 2,
-            message: "second".to_string(),
-        }).unwrap();
-        
+        sender
+            .send(TestEvent {
+                value: 1,
+                message: "first".to_string(),
+            })
+            .unwrap();
+
+        sender
+            .send(TestEvent {
+                value: 2,
+                message: "second".to_string(),
+            })
+            .unwrap();
+
         // Give time for events to be processed
         thread::sleep(Duration::from_millis(50));
-        
+
         // Check that events were processed
         let events = received_events.lock().unwrap();
         assert!(events.contains(&1));
@@ -410,33 +442,33 @@ mod tests {
     fn test_event_sender_try_send() {
         let bus = Arc::new(ThreadSafeEventBus::new());
         let received_count = Arc::new(Mutex::new(0));
-        
+
         // Register handler
         let count_clone = Arc::clone(&received_count);
         bus.on(move |_event: TestEvent| {
             let mut count = count_clone.lock().unwrap();
             *count += 1;
         });
-        
+
         // Create EventSender
         let sender = bus.create_sender::<TestEvent>(100).unwrap();
-        
+
         // Try sending events
         let result1 = sender.try_send(TestEvent {
             value: 1,
             message: "first".to_string(),
         });
         assert!(result1.is_ok());
-        
+
         let result2 = sender.try_send(TestEvent {
             value: 2,
             message: "second".to_string(),
         });
         assert!(result2.is_ok());
-        
+
         // Give time for events to be processed
         thread::sleep(Duration::from_millis(50));
-        
+
         // Check that events were processed
         let count = *received_count.lock().unwrap();
         assert_eq!(count, 2);
@@ -447,36 +479,38 @@ mod tests {
         let bus = Arc::new(ThreadSafeEventBus::new());
         let test_events = Arc::new(Mutex::new(Vec::new()));
         let counter_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handlers
         let test_clone = Arc::clone(&test_events);
         bus.on(move |event: TestEvent| {
             test_clone.lock().unwrap().push(event.value);
         });
-        
+
         let counter_clone = Arc::clone(&counter_events);
         bus.on(move |event: CounterEvent| {
             counter_clone.lock().unwrap().push(event.id);
         });
-        
+
         // Create MultiEventSender
         let multi_sender = crate::thread_safe::MultiEventSender::new(Arc::clone(&bus), 100);
-        
+
         // Send events of different types
-        multi_sender.send(TestEvent {
-            value: 10,
-            message: "test".to_string(),
-        }).unwrap();
-        
+        multi_sender
+            .send(TestEvent {
+                value: 10,
+                message: "test".to_string(),
+            })
+            .unwrap();
+
         multi_sender.send(CounterEvent { id: 20 }).unwrap();
-        
+
         // Give time for events to be processed
         thread::sleep(Duration::from_millis(50));
-        
+
         // Check that both event types were processed
         let test_vals = test_events.lock().unwrap();
         let counter_vals = counter_events.lock().unwrap();
-        
+
         assert!(test_vals.contains(&10));
         assert!(counter_vals.contains(&20));
     }
@@ -485,30 +519,42 @@ mod tests {
     fn test_emit_batch_sequential() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create batch of events
         let events = vec![
-            TestEvent { value: 1, message: "first".to_string() },
-            TestEvent { value: 2, message: "second".to_string() },
-            TestEvent { value: 3, message: "third".to_string() },
-            TestEvent { value: 4, message: "fourth".to_string() },
+            TestEvent {
+                value: 1,
+                message: "first".to_string(),
+            },
+            TestEvent {
+                value: 2,
+                message: "second".to_string(),
+            },
+            TestEvent {
+                value: 3,
+                message: "third".to_string(),
+            },
+            TestEvent {
+                value: 4,
+                message: "fourth".to_string(),
+            },
         ];
-        
+
         // Emit batch
         let results = bus.emit_batch(events).unwrap();
-        
+
         // Verify all events were processed
         assert_eq!(results.len(), 4);
         for result in &results {
             assert!(result.is_ok());
         }
-        
+
         let processed = processed_events.lock().unwrap();
         assert_eq!(*processed, vec![1, 2, 3, 4]);
     }
@@ -517,34 +563,49 @@ mod tests {
     fn test_emit_batch_concurrent() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create batch of events (large enough to trigger concurrent processing)
         let events = vec![
-            TestEvent { value: 1, message: "first".to_string() },
-            TestEvent { value: 2, message: "second".to_string() },
-            TestEvent { value: 3, message: "third".to_string() },
-            TestEvent { value: 4, message: "fourth".to_string() },
-            TestEvent { value: 5, message: "fifth".to_string() },
+            TestEvent {
+                value: 1,
+                message: "first".to_string(),
+            },
+            TestEvent {
+                value: 2,
+                message: "second".to_string(),
+            },
+            TestEvent {
+                value: 3,
+                message: "third".to_string(),
+            },
+            TestEvent {
+                value: 4,
+                message: "fourth".to_string(),
+            },
+            TestEvent {
+                value: 5,
+                message: "fifth".to_string(),
+            },
         ];
-        
+
         // Emit batch concurrently
         let results = bus.emit_batch_concurrent(events).unwrap();
-        
+
         // Verify all events were processed
         assert_eq!(results.len(), 5);
         for result in &results {
             assert!(result.is_ok());
         }
-        
+
         // Give time for concurrent processing
         thread::sleep(Duration::from_millis(10));
-        
+
         let mut processed = processed_events.lock().unwrap().clone();
         processed.sort(); // Order might vary due to concurrent processing
         assert_eq!(processed, vec![1, 2, 3, 4, 5]);
@@ -554,28 +615,34 @@ mod tests {
     fn test_emit_batch_concurrent_small_batch() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create small batch (should use sequential processing)
         let events = vec![
-            TestEvent { value: 1, message: "first".to_string() },
-            TestEvent { value: 2, message: "second".to_string() },
+            TestEvent {
+                value: 1,
+                message: "first".to_string(),
+            },
+            TestEvent {
+                value: 2,
+                message: "second".to_string(),
+            },
         ];
-        
+
         // Emit batch concurrently (but should use sequential due to size)
         let results = bus.emit_batch_concurrent(events).unwrap();
-        
+
         // Verify all events were processed
         assert_eq!(results.len(), 2);
         for result in &results {
             assert!(result.is_ok());
         }
-        
+
         let processed = processed_events.lock().unwrap();
         assert_eq!(*processed, vec![1, 2]);
     }
@@ -584,7 +651,7 @@ mod tests {
     fn test_emit_batch_with_errors() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler that fails for even values
         let events_clone = Arc::clone(&processed_events);
         bus.on_fallible(move |event: TestEvent| -> Result<(), TestError> {
@@ -595,25 +662,37 @@ mod tests {
                 Ok(())
             }
         });
-        
+
         // Create batch with both even and odd values
         let events = vec![
-            TestEvent { value: 1, message: "first".to_string() },
-            TestEvent { value: 2, message: "second".to_string() },
-            TestEvent { value: 3, message: "third".to_string() },
-            TestEvent { value: 4, message: "fourth".to_string() },
+            TestEvent {
+                value: 1,
+                message: "first".to_string(),
+            },
+            TestEvent {
+                value: 2,
+                message: "second".to_string(),
+            },
+            TestEvent {
+                value: 3,
+                message: "third".to_string(),
+            },
+            TestEvent {
+                value: 4,
+                message: "fourth".to_string(),
+            },
         ];
-        
+
         // Emit batch
         let results = bus.emit_batch(events).unwrap();
-        
+
         // Verify results - should have successes and failures
         assert_eq!(results.len(), 4);
         assert!(results[0].is_ok()); // 1 - odd, should succeed
         assert!(results[1].is_ok()); // 2 - even, but handler error doesn't propagate with current config
         assert!(results[2].is_ok()); // 3 - odd, should succeed
         assert!(results[3].is_ok()); // 4 - even, but handler error doesn't propagate with current config
-        
+
         // Only odd values should have been processed
         let processed = processed_events.lock().unwrap();
         assert_eq!(*processed, vec![1, 3]);
@@ -622,34 +701,36 @@ mod tests {
     #[test]
     fn test_emit_batch_empty() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Test empty batch
         let events: Vec<TestEvent> = vec![];
         let results = bus.emit_batch(events).unwrap();
-        
+
         assert_eq!(results.len(), 0);
     }
 
     #[test]
     fn test_emit_batch_after_shutdown() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Shutdown the bus
         bus.shutdown().unwrap();
-        
+
         // Try to emit batch after shutdown
-        let events = vec![
-            TestEvent { value: 1, message: "test".to_string() },
-        ];
-        
+        let events = vec![TestEvent {
+            value: 1,
+            message: "test".to_string(),
+        }];
+
         let result = bus.emit_batch(events);
         assert!(result.is_err());
-        
+
         // Should also fail for concurrent batch
-        let events = vec![
-            TestEvent { value: 1, message: "test".to_string() },
-        ];
-        
+        let events = vec![TestEvent {
+            value: 1,
+            message: "test".to_string(),
+        }];
+
         let result = bus.emit_batch_concurrent(events);
         assert!(result.is_err());
     }
@@ -657,12 +738,10 @@ mod tests {
     #[test]
     fn test_emit_mixed_batch() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Test mixed batch (currently returns error as not fully implemented)
-        let result = bus.emit_mixed_batch(|_emitter| {
-            Ok(())
-        });
-        
+        let result = bus.emit_mixed_batch(|_emitter| Ok(()));
+
         assert!(result.is_ok());
         let results = result.unwrap();
         assert_eq!(results.len(), 1);
@@ -672,25 +751,25 @@ mod tests {
     fn test_emit_stream() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create a stream of events
         let events = (1..=5).map(|i| TestEvent {
             value: i,
             message: format!("stream_event_{}", i),
         });
-        
+
         // Emit stream
         let processed_count = bus.emit_stream(events).unwrap();
-        
+
         // Verify all events were processed
         assert_eq!(processed_count, 5);
-        
+
         let processed = processed_events.lock().unwrap();
         assert_eq!(*processed, vec![1, 2, 3, 4, 5]);
     }
@@ -699,7 +778,7 @@ mod tests {
     fn test_emit_stream_with_failures() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler that fails for even values
         let events_clone = Arc::clone(&processed_events);
         bus.on_fallible(move |event: TestEvent| -> Result<(), TestError> {
@@ -710,19 +789,19 @@ mod tests {
                 Ok(())
             }
         });
-        
+
         // Create a stream with both even and odd values
         let events = (1..=6).map(|i| TestEvent {
             value: i,
             message: format!("stream_event_{}", i),
         });
-        
+
         // Emit stream (should continue even with failures)
         let processed_count = bus.emit_stream(events).unwrap();
-        
+
         // Should process all events (even though some handlers fail)
         assert_eq!(processed_count, 6);
-        
+
         // Only odd values should have been processed by the handler
         let processed = processed_events.lock().unwrap();
         assert_eq!(*processed, vec![1, 3, 5]);
@@ -732,28 +811,28 @@ mod tests {
     fn test_emit_stream_concurrent() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create a larger stream to test concurrent processing
         let events = (1..=10).map(|i| TestEvent {
             value: i,
             message: format!("concurrent_stream_event_{}", i),
         });
-        
+
         // Emit stream with 3 workers
         let processed_count = bus.emit_stream_concurrent(events, 3).unwrap();
-        
+
         // Verify all events were processed
         assert_eq!(processed_count, 10);
-        
+
         // Give time for concurrent processing
         thread::sleep(Duration::from_millis(10));
-        
+
         let mut processed = processed_events.lock().unwrap().clone();
         processed.sort(); // Order might vary due to concurrent processing
         assert_eq!(processed, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -763,28 +842,28 @@ mod tests {
     fn test_emit_stream_concurrent_auto_workers() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create stream
         let events = (1..=5).map(|i| TestEvent {
             value: i,
             message: format!("auto_worker_event_{}", i),
         });
-        
+
         // Emit stream with auto-detected workers (0 = auto)
         let processed_count = bus.emit_stream_concurrent(events, 0).unwrap();
-        
+
         // Verify all events were processed
         assert_eq!(processed_count, 5);
-        
+
         // Give time for concurrent processing
         thread::sleep(Duration::from_millis(10));
-        
+
         let mut processed = processed_events.lock().unwrap().clone();
         processed.sort();
         assert_eq!(processed, vec![1, 2, 3, 4, 5]);
@@ -794,13 +873,13 @@ mod tests {
     fn test_emit_and_forget() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Emit events using fire-and-forget
         for i in 1..=3 {
             let result = bus.emit_and_forget(TestEvent {
@@ -809,10 +888,10 @@ mod tests {
             });
             assert!(result.is_ok());
         }
-        
+
         // Give time for async processing
         thread::sleep(Duration::from_millis(50));
-        
+
         // Check that events were processed
         let mut processed = processed_events.lock().unwrap().clone();
         processed.sort();
@@ -823,28 +902,40 @@ mod tests {
     fn test_emit_bulk_and_forget() {
         let bus = ThreadSafeEventBus::new();
         let processed_events = Arc::new(Mutex::new(Vec::new()));
-        
+
         // Register handler
         let events_clone = Arc::clone(&processed_events);
         bus.on(move |event: TestEvent| {
             events_clone.lock().unwrap().push(event.value);
         });
-        
+
         // Create bulk events
         let events = vec![
-            TestEvent { value: 1, message: "bulk_1".to_string() },
-            TestEvent { value: 2, message: "bulk_2".to_string() },
-            TestEvent { value: 3, message: "bulk_3".to_string() },
-            TestEvent { value: 4, message: "bulk_4".to_string() },
+            TestEvent {
+                value: 1,
+                message: "bulk_1".to_string(),
+            },
+            TestEvent {
+                value: 2,
+                message: "bulk_2".to_string(),
+            },
+            TestEvent {
+                value: 3,
+                message: "bulk_3".to_string(),
+            },
+            TestEvent {
+                value: 4,
+                message: "bulk_4".to_string(),
+            },
         ];
-        
+
         // Emit bulk events using fire-and-forget
         let result = bus.emit_bulk_and_forget(events);
         assert!(result.is_ok());
-        
+
         // Give time for async processing
         thread::sleep(Duration::from_millis(50));
-        
+
         // Check that events were processed
         let mut processed = processed_events.lock().unwrap().clone();
         processed.sort();
@@ -854,7 +945,7 @@ mod tests {
     #[test]
     fn test_emit_bulk_and_forget_empty() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Test empty bulk
         let events: Vec<TestEvent> = vec![];
         let result = bus.emit_bulk_and_forget(events);
@@ -864,37 +955,40 @@ mod tests {
     #[test]
     fn test_stream_processing_after_shutdown() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Shutdown the bus
         bus.shutdown().unwrap();
-        
+
         // Try stream processing after shutdown
         let events = (1..=3).map(|i| TestEvent {
             value: i,
             message: format!("after_shutdown_{}", i),
         });
-        
+
         let result = bus.emit_stream(events);
         assert!(result.is_err());
-        
+
         // Try concurrent stream processing after shutdown
         let events = (1..=3).map(|i| TestEvent {
             value: i,
             message: format!("concurrent_after_shutdown_{}", i),
         });
-        
+
         let result = bus.emit_stream_concurrent(events, 2);
         assert!(result.is_err());
-        
+
         // Try fire-and-forget after shutdown
         let result = bus.emit_and_forget(TestEvent {
             value: 1,
             message: "forget_after_shutdown".to_string(),
         });
         assert!(result.is_err());
-        
+
         // Try bulk fire-and-forget after shutdown
-        let events = vec![TestEvent { value: 1, message: "bulk_after_shutdown".to_string() }];
+        let events = vec![TestEvent {
+            value: 1,
+            message: "bulk_after_shutdown".to_string(),
+        }];
         let result = bus.emit_bulk_and_forget(events);
         assert!(result.is_err());
     }
@@ -902,12 +996,12 @@ mod tests {
     #[test]
     fn test_empty_stream() {
         let bus = ThreadSafeEventBus::new();
-        
+
         // Test empty stream
         let events = std::iter::empty::<TestEvent>();
         let processed_count = bus.emit_stream(events).unwrap();
         assert_eq!(processed_count, 0);
-        
+
         // Test empty concurrent stream
         let events = std::iter::empty::<TestEvent>();
         let processed_count = bus.emit_stream_concurrent(events, 2).unwrap();
@@ -918,24 +1012,24 @@ mod tests {
     fn test_large_stream_processing() {
         let bus = ThreadSafeEventBus::new();
         let processed_count = Arc::new(Mutex::new(0));
-        
+
         // Register handler that just counts
         let count_clone = Arc::clone(&processed_count);
         bus.on(move |_event: TestEvent| {
             let mut count = count_clone.lock().unwrap();
             *count += 1;
         });
-        
+
         // Create a large stream (1000 events)
         let events = (1..=1000).map(|i| TestEvent {
             value: i,
             message: format!("large_stream_{}", i),
         });
-        
+
         // Process stream
         let processed = bus.emit_stream(events).unwrap();
         assert_eq!(processed, 1000);
-        
+
         // Verify all events were handled
         let final_count = *processed_count.lock().unwrap();
         assert_eq!(final_count, 1000);

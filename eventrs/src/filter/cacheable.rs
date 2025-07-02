@@ -1,17 +1,16 @@
 //! Caching support for filters.
 
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
-use std::sync::Arc;
 use crate::filter::any::AnyEvent;
-
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 /// Trait for events that can provide a content hash for caching.
-/// 
+///
 /// Events implementing this trait can participate in content-aware filter caching.
 pub trait CacheableEvent: AnyEvent {
     /// Returns a hash of the event's content.
-    /// 
+    ///
     /// This hash should change whenever the event's content changes in a way
     /// that might affect filter results.
     fn content_hash(&self) -> u64;
@@ -25,7 +24,7 @@ pub fn compute_hash<T: Hash>(value: &T) -> u64 {
 }
 
 /// A dynamic filter that can be updated at runtime.
-/// 
+///
 /// This filter wraps a closure that can be replaced dynamically,
 /// allowing filter behavior to be modified without recreating the filter.
 pub struct DynamicFilter {
@@ -36,7 +35,7 @@ pub struct DynamicFilter {
 
 impl DynamicFilter {
     /// Creates a new dynamic filter.
-    pub fn new<S: Into<String>, F>(name: S, predicate: F) -> Self 
+    pub fn new<S: Into<String>, F>(name: S, predicate: F) -> Self
     where
         F: Fn(&dyn AnyEvent) -> bool + Send + Sync + 'static,
     {
@@ -46,20 +45,20 @@ impl DynamicFilter {
             cacheable: false,
         }
     }
-    
+
     /// Creates a new dynamic filter wrapped in Arc for sharing.
-    pub fn new_shared<S: Into<String>, F>(name: S, predicate: F) -> Arc<Self> 
+    pub fn new_shared<S: Into<String>, F>(name: S, predicate: F) -> Arc<Self>
     where
         F: Fn(&dyn AnyEvent) -> bool + Send + Sync + 'static,
     {
         Arc::new(Self::new(name, predicate))
     }
-    
+
     /// Creates a new cacheable dynamic filter.
-    /// 
+    ///
     /// Only use this for filters that depend solely on event type,
     /// not event content.
-    pub fn new_cacheable<S: Into<String>, F>(name: S, predicate: F) -> Self 
+    pub fn new_cacheable<S: Into<String>, F>(name: S, predicate: F) -> Self
     where
         F: Fn(&dyn AnyEvent) -> bool + Send + Sync + 'static,
     {
@@ -69,7 +68,7 @@ impl DynamicFilter {
             cacheable: true,
         }
     }
-    
+
     /// Updates the filter predicate.
     pub fn update_predicate<F>(&self, new_predicate: F)
     where
@@ -77,7 +76,7 @@ impl DynamicFilter {
     {
         *self.predicate.write().unwrap() = Box::new(new_predicate);
     }
-    
+
     /// Returns the name of this filter.
     pub fn name(&self) -> &str {
         &self.name
@@ -89,13 +88,13 @@ impl crate::filter::any::AnyEventFilter for DynamicFilter {
         let predicate = self.predicate.read().unwrap();
         predicate(event)
     }
-    
+
     fn name(&self) -> &'static str {
         // We leak the string to get a 'static lifetime
         // This is acceptable for filter names which are typically long-lived
         Box::leak(self.name.clone().into_boxed_str())
     }
-    
+
     fn is_cacheable(&self) -> bool {
         self.cacheable
     }
@@ -105,18 +104,17 @@ impl crate::filter::any::AnyEventFilter for Arc<DynamicFilter> {
     fn evaluate(&self, event: &dyn AnyEvent) -> bool {
         (**self).evaluate(event)
     }
-    
+
     fn name(&self) -> &'static str {
         // We leak the string to get a 'static lifetime
         // This is acceptable for filter names which are typically long-lived
         Box::leak(self.name.clone().into_boxed_str())
     }
-    
+
     fn is_cacheable(&self) -> bool {
         (**self).is_cacheable()
     }
 }
-
 
 /// A filter that caches results for events based on their content hash.
 pub struct ContentAwareCacheFilter<F>
@@ -142,13 +140,13 @@ where
             max_cache_size: 1000,
         }
     }
-    
+
     /// Sets the maximum cache size.
     pub fn with_max_cache_size(mut self, size: usize) -> Self {
         self.max_cache_size = size;
         self
     }
-    
+
     fn get_content_hash(&self, event: &dyn AnyEvent) -> u64 {
         // For now, just use type-based hash
         // In a real implementation, events could implement CacheableEvent directly
@@ -162,7 +160,7 @@ where
 {
     fn evaluate(&self, event: &dyn AnyEvent) -> bool {
         let hash = self.get_content_hash(event);
-        
+
         // Check cache
         {
             let cache = self.cache.read().unwrap();
@@ -170,14 +168,14 @@ where
                 return result;
             }
         }
-        
+
         // Evaluate predicate
         let result = (self.predicate)(event);
-        
+
         // Update cache
         {
             let mut cache = self.cache.write().unwrap();
-            
+
             // Evict old entries if cache is too large
             if cache.len() >= self.max_cache_size {
                 // Simple eviction: remove half the entries
@@ -187,23 +185,22 @@ where
                     cache.remove(&key);
                 }
             }
-            
+
             cache.insert(hash, result);
         }
-        
+
         result
     }
-    
+
     fn name(&self) -> &'static str {
         Box::leak(self.name.clone().into_boxed_str())
     }
-    
+
     fn is_cacheable(&self) -> bool {
         false // This filter has its own internal cache
     }
-    
+
     fn is_expensive(&self) -> bool {
         true // Content-aware filters are typically expensive
     }
 }
-

@@ -4,16 +4,16 @@ use crate::event::Event;
 use std::any::{Any, TypeId};
 
 /// A trait for events that can be filtered at the global level.
-/// 
+///
 /// This trait provides the minimal interface needed for global filtering
 /// without requiring Clone, making it dyn-compatible.
 pub trait AnyEvent: Send + Sync + 'static {
     /// Returns the type name of the event.
     fn event_type_name(&self) -> &'static str;
-    
+
     /// Returns the TypeId of the event.
     fn event_type_id(&self) -> TypeId;
-    
+
     /// Returns a reference to self as Any for downcasting.
     fn as_any(&self) -> &dyn Any;
 }
@@ -23,11 +23,11 @@ impl<T: Event> AnyEvent for T {
     fn event_type_name(&self) -> &'static str {
         T::event_type_name()
     }
-    
+
     fn event_type_id(&self) -> TypeId {
         T::event_type_id()
     }
-    
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -44,23 +44,23 @@ pub trait AnyEventFilter: Send + Sync + 'static {
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
     }
-    
+
     /// Returns whether this filter's results can be cached.
-    /// 
+    ///
     /// Filters that depend only on event type (not content) should return true.
     /// Filters that examine event content should typically return false.
     fn is_cacheable(&self) -> bool {
         false
     }
-    
+
     /// Generates a cache key for the given event.
-    /// 
+    ///
     /// The cache key should uniquely identify the combination of this filter's
     /// state and the relevant aspects of the event.
     fn cache_key(&self, event: &dyn AnyEvent) -> String {
         format!("{:?}", event.event_type_id())
     }
-    
+
     /// Returns a hint about whether this filter is expensive to evaluate.
     fn is_expensive(&self) -> bool {
         false
@@ -116,7 +116,7 @@ impl AnyEventFilter for AllowAllAnyFilter {
     fn name(&self) -> &'static str {
         "AllowAllAnyFilter"
     }
-    
+
     fn is_cacheable(&self) -> bool {
         true // Result is always the same
     }
@@ -133,7 +133,7 @@ impl AnyEventFilter for RejectAllAnyFilter {
     fn name(&self) -> &'static str {
         "RejectAllAnyFilter"
     }
-    
+
     fn is_cacheable(&self) -> bool {
         true // Result is always the same
     }
@@ -209,7 +209,7 @@ impl AnyEventFilter for EventTypeFilter {
     fn evaluate(&self, event: &dyn AnyEvent) -> bool {
         let event_type_name = event.event_type_name();
         let contains = self.allowed_types.iter().any(|t| t == event_type_name);
-        
+
         match self.mode {
             EventTypeFilterMode::Allow => contains,
             EventTypeFilterMode::Block => !contains,
@@ -222,7 +222,7 @@ impl AnyEventFilter for EventTypeFilter {
             EventTypeFilterMode::Block => "BlockEventTypeFilter",
         }
     }
-    
+
     fn is_cacheable(&self) -> bool {
         true // Only depends on event type
     }

@@ -228,7 +228,7 @@ fn benchmark_metrics(c: &mut Criterion) {
     let mut group = c.benchmark_group("metrics");
     
     group.bench_function("metrics_collection", |b| {
-        let bus = EventBusBuilder::new()
+        let mut bus = EventBusBuilder::new()
             .with_metrics(true)
             .build();
         

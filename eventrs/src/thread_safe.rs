@@ -249,7 +249,7 @@ impl ThreadSafeEventBus {
         #[cfg(feature = "metrics")]
         let token = self.metrics.as_ref().map(|m| m.start_emission(TypeId::of::<E>()));
         
-        let _emission_start = Instant::now();
+        let emission_start = Instant::now();
         
         // Validate the event if configured to do so
         if self.config.validate_events {
@@ -626,7 +626,7 @@ impl ThreadSafeEventBus {
             .map(|entry| PriorityOrdered::new(entry, entry.priority))
             .collect();
         
-        let handler_results = Vec::new();
+        let mut handler_results = Vec::new();
         
         while let Some(ordered_handler) = priority_handlers.pop() {
             let handler_entry = ordered_handler.item();
@@ -686,7 +686,7 @@ impl ThreadSafeEventBus {
     }
     
     fn process_handlers_sequential<E: Event>(&self, event: &E, handlers: Vec<ThreadSafeHandlerEntry<E>>) -> EventBusResult<Vec<HandlerResult>> {
-        let handler_results = Vec::new();
+        let mut handler_results = Vec::new();
         
         for handler_entry in handlers {
             // Check if the handler should process this event based on its filter

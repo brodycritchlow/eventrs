@@ -45,6 +45,10 @@ futures.workspace = true
 async-std.workspace = true
 
 
+[[bench]]
+name = "event_bus_benchmarks"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

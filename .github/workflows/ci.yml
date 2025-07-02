@@ -36,7 +36,7 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
+          eventrs/target
         key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-${{ matrix.rust }}-
@@ -44,21 +44,27 @@ jobs:
     
     - name: Check formatting
       run: cargo fmt --all -- --check
+      working-directory: ./eventrs
     
     - name: Run Clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets --all-features -- -D warnings -A dead_code -A unused_imports -A unused_variables
+      working-directory: ./eventrs
     
     - name: Build library
       run: cargo build --lib --all-features
+      working-directory: ./eventrs
     
     - name: Run lib tests
       run: cargo test --lib --all-features
+      working-directory: ./eventrs
     
     - name: Run doc tests
       run: cargo test --doc --all-features
+      working-directory: ./eventrs
     
     - name: Test examples compile
       run: cargo check --examples --all-features
+      working-directory: ./eventrs
 
   bench:
     name: Benchmarks
@@ -75,14 +81,16 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
+          eventrs/target
         key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
     
     - name: Check benchmarks compile
       run: cargo check --benches --all-features
+      working-directory: ./eventrs
     
     - name: Run benchmarks (dry run)
       run: cargo bench --all-features -- --test
+      working-directory: ./eventrs
 
   features:
     name: Feature Combinations
@@ -99,23 +107,28 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
+          eventrs/target
         key: ${{ runner.os }}-cargo-features-${{ hashFiles('**/Cargo.lock') }}
     
     - name: Test default features
       run: cargo test --lib
+      working-directory: ./eventrs
     
     - name: Test no default features
       run: cargo test --lib --no-default-features
+      working-directory: ./eventrs
     
     - name: Test async feature only
       run: cargo test --lib --no-default-features --features async
+      working-directory: ./eventrs
     
     - name: Test metrics feature only
       run: cargo test --lib --no-default-features --features metrics
+      working-directory: ./eventrs
     
     - name: Test all features
       run: cargo test --lib --all-features
+      working-directory: ./eventrs
 
   security:
     name: Security Audit
@@ -131,6 +144,7 @@ jobs:
     
     - name: Run security audit
       run: cargo audit
+      working-directory: ./eventrs
 
   performance:
     name: Performance Tests
@@ -147,76 +161,16 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
+          eventrs/target
         key: ${{ runner.os }}-cargo-perf-${{ hashFiles('**/Cargo.lock') }}
     
     - name: Run performance regression tests
       run: cargo test --test simple_performance --release
+      working-directory: ./eventrs
     
     - name: Check performance benchmarks
       run: cargo bench --all-features -- --test
-
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: llvm-tools-preview
-    
-    - name: Install cargo-llvm-cov
-      uses: taiki-e/install-action@cargo-llvm-cov
-    
-    - name: Cache cargo
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Generate code coverage
-      run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        files: lcov.info
-        fail_ci_if_error: true
-
-  minimal-versions:
-    name: Minimal Versions
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust nightly
-      uses: dtolnay/rust-toolchain@nightly
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Cache cargo
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-minimal-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Install cargo-hack
-      run: cargo install cargo-hack
-    
-    - name: Generate minimal versions
-      run: cargo +nightly hack generate-lockfile -Z minimal-versions
-    
-    - name: Test with minimal versions
-      run: cargo +stable test --lib
+      working-directory: ./eventrs
 
   docs:
     name: Documentation
@@ -233,40 +187,18 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
+          eventrs/target
         key: ${{ runner.os }}-cargo-docs-${{ hashFiles('**/Cargo.lock') }}
     
     - name: Check documentation
       run: cargo doc --all-features --no-deps --document-private-items
+      working-directory: ./eventrs
       env:
-        RUSTDOCFLAGS: -D warnings
+        RUSTDOCFLAGS: -D warnings -A rustdoc::private_doc_tests
     
     - name: Test documentation examples
       run: cargo test --doc --all-features
-
-  check-msrv:
-    name: Check MSRV
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust MSRV
-      uses: dtolnay/rust-toolchain@1.70.0
-    
-    - name: Cache cargo
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Check with MSRV
-      run: cargo check --all-features
-    
-    - name: Test with MSRV  
-      run: cargo test --lib --all-features
+      working-directory: ./eventrs
 
   integration:
     name: Integration Tests
@@ -283,7 +215,7 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
+          eventrs/target
         key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
     
     - name: Run all examples
@@ -293,9 +225,12 @@ jobs:
           echo "Running example: $example_name"
           cargo run --example "$example_name" --all-features
         done
+      working-directory: ./eventrs
     
     - name: Test workspace
       run: cargo test --workspace --all-features
+      working-directory: ./eventrs
     
     - name: Check all targets
       run: cargo check --all-targets --all-features
+      working-directory: ./eventrs

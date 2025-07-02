@@ -42,11 +42,12 @@ use crate::metrics::{EventBusMetrics, EmissionResult, HandlerResult, EmissionTok
 #[cfg(not(feature = "metrics"))]
 type HandlerResult = ();
 
+
 use std::any::TypeId;
 use std::collections::{HashMap, BinaryHeap};
 use std::sync::{Arc, RwLock, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::mpsc;
 use std::time::Instant;
 use std::thread;
 
@@ -90,7 +91,6 @@ impl<E: Event> ThreadSafeHandlerEntry<E> {
 }
 
 /// Thread-safe storage for event handlers.
-type ThreadSafeHandlerStorage<E> = Arc<RwLock<Vec<ThreadSafeHandlerEntry<E>>>>;
 
 /// Thread-safe event bus that can be safely shared across multiple threads.
 /// 
@@ -249,7 +249,7 @@ impl ThreadSafeEventBus {
         #[cfg(feature = "metrics")]
         let token = self.metrics.as_ref().map(|m| m.start_emission(TypeId::of::<E>()));
         
-        let emission_start = Instant::now();
+        let _emission_start = Instant::now();
         
         // Validate the event if configured to do so
         if self.config.validate_events {
@@ -626,7 +626,7 @@ impl ThreadSafeEventBus {
             .map(|entry| PriorityOrdered::new(entry, entry.priority))
             .collect();
         
-        let mut handler_results = Vec::new();
+        let handler_results = Vec::new();
         
         while let Some(ordered_handler) = priority_handlers.pop() {
             let handler_entry = ordered_handler.item();
@@ -643,20 +643,20 @@ impl ThreadSafeEventBus {
             
             let execution_start = Instant::now();
             let result = self.execute_handler(handler_entry, event.clone());
-            let execution_time = execution_start.elapsed();
+            let _execution_time = execution_start.elapsed();
             
             #[cfg(feature = "metrics")]
             {
                 let handler_result = if result.is_ok() {
                     HandlerResult::success(
                         handler_entry.id.to_string(),
-                        execution_time,
+                        _execution_time,
                         format!("{:?}", handler_entry.priority),
                     )
                 } else {
                     HandlerResult::failure(
                         handler_entry.id.to_string(),
-                        execution_time,
+                        _execution_time,
                         format!("{:?}", handler_entry.priority),
                         result.as_ref().err().unwrap().to_string(),
                     )
@@ -686,7 +686,7 @@ impl ThreadSafeEventBus {
     }
     
     fn process_handlers_sequential<E: Event>(&self, event: &E, handlers: Vec<ThreadSafeHandlerEntry<E>>) -> EventBusResult<Vec<HandlerResult>> {
-        let mut handler_results = Vec::new();
+        let handler_results = Vec::new();
         
         for handler_entry in handlers {
             // Check if the handler should process this event based on its filter
@@ -701,20 +701,20 @@ impl ThreadSafeEventBus {
             
             let execution_start = Instant::now();
             let result = self.execute_handler(&handler_entry, event.clone());
-            let execution_time = execution_start.elapsed();
+            let _execution_time = execution_start.elapsed();
             
             #[cfg(feature = "metrics")]
             {
                 let handler_result = if result.is_ok() {
                     HandlerResult::success(
                         handler_entry.id.to_string(),
-                        execution_time,
+                        _execution_time,
                         format!("{:?}", handler_entry.priority),
                     )
                 } else {
                     HandlerResult::failure(
                         handler_entry.id.to_string(),
-                        execution_time,
+                        _execution_time,
                         format!("{:?}", handler_entry.priority),
                         result.as_ref().err().unwrap().to_string(),
                     )
@@ -1016,10 +1016,10 @@ impl ThreadSafeEventBus {
         }
         
         let mut results = Vec::new();
-        let bus = self.clone();
+        let _bus = self.clone();
         
         {
-            let mut emitter = |event_any: Box<dyn std::any::Any + Send>| -> EventBusResult<()> {
+            let mut emitter = |_event_any: Box<dyn std::any::Any + Send>| -> EventBusResult<()> {
                 // This is a simplified version - full implementation would need type erasure
                 // For now, we'll return an error indicating this feature needs more work
                 results.push(Err(EventBusError::internal("Mixed batch emission not fully implemented yet")));

@@ -279,9 +279,7 @@ impl<E: Event> MiddlewareChain<E> {
             error: result.as_ref().err().map(|e| e.to_string()),
         };
         
-        if let Err(e) = result {
-            return Err(e);
-        }
+        result?;
         
         if context.is_short_circuited() {
             return Ok(());

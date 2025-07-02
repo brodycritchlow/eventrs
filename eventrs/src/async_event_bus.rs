@@ -10,12 +10,12 @@ use crate::handler::{AsyncHandler, HandlerId};
 #[cfg(feature = "async")]
 use crate::error::{EventBusResult, EventBusError};
 #[cfg(feature = "async")]
-use crate::priority::{Priority, PriorityOrdered};
+use crate::priority::Priority;
 
 #[cfg(feature = "async")]
 use std::any::TypeId;
 #[cfg(feature = "async")]
-use std::collections::{HashMap, BinaryHeap};
+use std::collections::HashMap;
 #[cfg(feature = "async")]
 use std::sync::Arc;
 #[cfg(feature = "async")]
@@ -838,7 +838,7 @@ impl AsyncEventBusBuilder {
     /// 
     /// # Arguments
     /// * `enabled` - Whether to enable metrics collection
-    pub fn with_metrics(mut self, enabled: bool) -> Self {
+    pub fn with_metrics(self, _enabled: bool) -> Self {
         // TODO: Add metrics flag to AsyncEventBusConfig
         // For now, this is a no-op
         self

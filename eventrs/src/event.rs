@@ -187,49 +187,64 @@ pub trait Event: Clone + Send + Sync + 'static {
     }
 }
 
+/// Marker trait for events that support async functionality.
+/// 
+/// This trait is automatically implemented by the `#[derive(AsyncEvent)]` macro
+/// and is used to identify events that have async-specific methods like
+/// `validate_async()` and `generate_metadata_async()`.
+/// 
+/// ## Purpose
+/// 
+/// The AsyncEventMarker trait serves several purposes:
+/// 
+/// 1. **Type System Integration**: Allows the type system to distinguish between
+///    regular events and async-enhanced events
+/// 2. **Compile-Time Optimization**: Enables compile-time optimizations for async events
+/// 3. **Runtime Introspection**: Allows runtime code to detect async capabilities
+/// 4. **Async Event Bus Integration**: Used by AsyncEventBus for optimized async handling
+/// 
+/// ## Implementation
+/// 
+/// This trait is automatically implemented by the derive macro - you should not
+/// implement it manually:
+/// 
+/// ```rust
+/// use eventrs::AsyncEvent;
+/// 
+/// #[derive(AsyncEvent, Clone, Debug)]
+/// #[event(async_validation, async_metadata)]
+/// struct MyAsyncEvent {
+///     data: String,
+/// }
+/// 
+/// // AsyncEventMarker is automatically implemented
+/// ```
+/// 
+/// ## Usage with Generic Code
+/// 
+/// Use this trait as a bound when writing generic code that needs to work
+/// specifically with async events:
+/// 
+/// ```rust
+/// use eventrs::{Event, AsyncEventMarker};
+/// 
+/// fn process_async_event<E>(_event: &E) 
+/// where 
+///     E: Event + AsyncEventMarker,
+/// {
+///     // This function only accepts events with async capabilities
+///     println!("Processing async event: {}", E::event_type_name());
+/// }
+/// ```
+pub trait AsyncEventMarker: Event {
+    // This trait is intentionally empty - it serves as a marker
+}
+
 /// Type-erased event wrapper for internal use.
 /// 
 /// This allows the event bus to store events of different types
 /// in the same collection while maintaining type safety through
 /// the type system.
-#[derive(Debug)]
-pub(crate) struct EventWrapper {
-    pub(crate) type_id: TypeId,
-    pub(crate) type_name: &'static str,
-    pub(crate) data: Box<dyn std::any::Any + Send + Sync>,
-    pub(crate) metadata: EventMetadata,
-    pub(crate) size: usize,
-}
-
-impl EventWrapper {
-    /// Creates a new event wrapper from a concrete event.
-    pub(crate) fn new<E: Event>(event: E) -> Self {
-        let metadata = event.metadata();
-        let size = event.size_hint();
-        
-        Self {
-            type_id: E::event_type_id(),
-            type_name: E::event_type_name(),
-            data: Box::new(event),
-            metadata,
-            size,
-        }
-    }
-    
-    /// Attempts to downcast the wrapped event to the specified type.
-    pub(crate) fn downcast<E: Event>(&self) -> Option<&E> {
-        if self.type_id == E::event_type_id() {
-            self.data.downcast_ref::<E>()
-        } else {
-            None
-        }
-    }
-    
-    /// Returns whether this wrapper contains an event of the specified type.
-    pub(crate) fn is_type<E: Event>(&self) -> bool {
-        self.type_id == E::event_type_id()
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -333,23 +348,6 @@ mod tests {
         assert!(large_event.is_expensive_to_clone());
     }
 
-    #[test]
-    fn test_event_wrapper() {
-        let event = TestEvent {
-            value: 42,
-            data: vec![1, 2, 3],
-        };
-        
-        let wrapper = EventWrapper::new(event.clone());
-        
-        assert_eq!(wrapper.type_id, TestEvent::event_type_id());
-        assert_eq!(wrapper.type_name, "TestEvent");
-        assert_eq!(wrapper.size, event.size_hint());
-        
-        let downcast = wrapper.downcast::<TestEvent>().unwrap();
-        assert_eq!(downcast.value, 42);
-        assert_eq!(downcast.data, vec![1, 2, 3]);
-    }
 
     #[test]
     fn test_log_description() {

@@ -100,8 +100,10 @@ pub struct EventMetadata {
 
 /// Security classification levels for events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum SecurityLevel {
     /// Public information, no restrictions.
+    #[default]
     Public,
     
     /// Internal use only, not for external sharing.
@@ -1119,11 +1121,6 @@ impl Default for EventMetadata {
     }
 }
 
-impl Default for SecurityLevel {
-    fn default() -> Self {
-        SecurityLevel::Public
-    }
-}
 
 impl std::fmt::Display for SecurityLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1331,7 +1328,7 @@ mod tests {
 
     #[test]
     fn test_event_provenance() {
-        let mut metadata = EventMetadata::new();
+        let metadata = EventMetadata::new();
         
         // Test original event
         assert!(metadata.provenance().is_original());

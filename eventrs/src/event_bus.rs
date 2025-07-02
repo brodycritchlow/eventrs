@@ -117,7 +117,6 @@ impl<E: Event> HandlerEntry<E> {
 }
 
 /// Thread-safe storage for event handlers.
-type HandlerStorage<E> = Arc<RwLock<Vec<HandlerEntry<E>>>>;
 
 /// Main synchronous event bus for processing events.
 /// 
@@ -495,7 +494,7 @@ impl EventBus {
         // Remove from handlers map
         let removed = {
             let mut handlers_map = self.handlers.write().unwrap();
-            if let Some(handlers_any) = handlers_map.get_mut(&type_id) {
+            if let Some(_handlers_any) = handlers_map.get_mut(&type_id) {
                 // This is a bit complex due to type erasure, but in a real implementation
                 // we would have proper type-safe storage
                 true // Simplified for now

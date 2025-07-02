@@ -25,6 +25,7 @@ use std::cmp::Ordering;
 /// assert!(custom > normal);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Priority {
     /// Critical priority - highest precedence (value: 1000).
     /// 
@@ -42,6 +43,7 @@ pub enum Priority {
     /// 
     /// Use for regular application events that don't require
     /// special ordering considerations.
+    #[default]
     Normal,
     
     /// Low priority (value: 250).
@@ -199,11 +201,6 @@ impl Priority {
     }
 }
 
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Normal
-    }
-}
 
 impl PartialOrd for Priority {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
